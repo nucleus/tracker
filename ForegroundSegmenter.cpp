@@ -17,7 +17,7 @@ void ForegroundSegmenter::setImageParams(unsigned int _width, unsigned int _heig
 	assert(_channels == 1);
 	iBgChannels = _channels;
 	
-	namedWindow("RunningBGAverage", 1);
+// 	namedWindow("RunningBGAverage", 1);
 	
 	cBgMean = Mat(iBgHeight, iBgWidth, CV_32FC1, Scalar(0.0)).clone();
 	cBgDeviation = Mat(iBgHeight, iBgWidth, CV_32FC1, Scalar(0.0)).clone();
@@ -40,7 +40,7 @@ void ForegroundSegmenter::addFrameToModel(Mat& frame) {
 		addWeighted(cBgMean, (1.0-dLearningRate), f, dLearningRate, 0.0, cBgMean);
 		Mat tmp;
 		cBgMean.convertTo(tmp, CV_8UC1);
-		imshow("RunningBGAverage", tmp);
+// 		imshow("RunningBGAverage", tmp);
 	}
 }
 

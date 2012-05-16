@@ -1,6 +1,14 @@
 #include "BallDetection.h"
 #include "TrackerExceptions.h"
 
+bool cmpPointPairX(Point2f a, Point2f b) {
+	return (a.x < b.x);
+}
+
+bool cmpPointPairY(Point2f a, Point2f b) {
+	return (a.y < b.y);
+}
+
 BallDetection::BallDetection() {
 	
 	lastImage = NULL;
@@ -8,6 +16,8 @@ BallDetection::BallDetection() {
 
 	iNumberOfClusters = 6;
 	amountOfPastCenterCoords = 5;
+	
+	tracking = false;
 	
 	int x, y;
 	for(x = -HALFTABLESIZE; x <= HALFTABLESIZE; x++) {
@@ -81,7 +91,12 @@ void BallDetection::locateBallOpticalFlow(Mat& srcFrame, Mat& dstFrame, vector< 
 		itnext++;
 	}
 
-	if(count < BALL_PELS_UPPER && count > BALL_PELS_LOWER) {
+	bool detected = (count > BALL_PELS_LOWER && count < BALL_PELS_UPPER);
+
+	// If ball was detected with reasonable accuracy, draw it and add current position to past ball positions
+	if(detected) {
+// 		cout << "Ball detected at " << count << " Pixels." << endl;
+		// Draw ball motion
 		itnext = nextFilteredPoints.begin();
 		bool drawLine = true;
 		for(vector<Point2f>::iterator it = currentFilteredPoints.begin(); it != currentFilteredPoints.end(); it++) {
@@ -89,6 +104,49 @@ void BallDetection::locateBallOpticalFlow(Mat& srcFrame, Mat& dstFrame, vector< 
 				line(dstFrame, *it, *itnext, Scalar(0,0,255), 1, 8);
 			drawLine = !drawLine;
 			itnext++;
+		}
+		
+		// Remove previous estimated results
+		if(!tracking) {
+			vPreviousBallLocations.clear();
+			tracking = true;
+		}
+			
+		// Find ball corner, find minimum in both x and y direction
+		float x, y;
+		sort(currentFilteredPoints.begin(), currentFilteredPoints.end(), cmpPointPairX);
+		x = currentFilteredPoints[9].x;
+		sort(currentFilteredPoints.begin(), currentFilteredPoints.end(), cmpPointPairY);
+		y = currentFilteredPoints[9].y;
+// 		cout << "Located at " << x << "," << y << endl;
+		vPreviousBallLocations.push_front(Point2f(x,y));
+	} else {
+		// If no good ball candidate, draw prediction from past candidates and delete past candidates
+		tracking = false;
+		
+		// Linear interpolation
+		if(vPreviousBallLocations.size() >= 2) {
+			list<Point2f>::iterator it = vPreviousBallLocations.begin();
+			Point2f last = *it++;
+			Point2f secondToLast = *it;
+			Point2f nextPoint;
+			nextPoint.x = secondToLast.x + (last.x - secondToLast.x)*(2);
+			nextPoint.y = secondToLast.y + (last.y - secondToLast.y)*(2);
+			vPreviousBallLocations.push_front(nextPoint);
+// 			cout << "Next point " << nextPoint.x << "," << nextPoint.y << " from " << last.x << "," << last.y << " and " << secondToLast.x << "," << secondToLast.y << endl;
+		}
+	}
+	
+	// Draw flight contours
+	if(vPreviousBallLocations.size() >= 2) {
+		list<Point2f>::iterator nextit, tmp;
+		for(list<Point2f>::iterator it = vPreviousBallLocations.begin(); it != vPreviousBallLocations.end(); it++) {
+			tmp = it;
+			nextit = it++;
+			it = tmp;
+			if(nextit == vPreviousBallLocations.end())
+				break;
+			line(dstFrame, *it, *nextit, Scalar(0,0,255), 1, 8);				
 		}
 	}
 	return;

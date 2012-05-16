@@ -1,11 +1,16 @@
+#ifndef BALL_DETECTION_H
+#define BALL_DETECTION_H
+
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/video/tracking.hpp>
 #include <opencv2/video/background_segm.hpp>
 
 #include <vector>
+#include <list>
 #include <utility>
 #include <iostream>
+#include <algorithm>
 
 #define HALFTABLESIZE 20
 #define MINRADIUS 3
@@ -14,8 +19,8 @@
 #define HTHRESHOLD 128
 #define LTHRESHOLD 64
 
-#define BALL_PELS_UPPER 60
-#define BALL_PELS_LOWER 20
+#define BALL_PELS_UPPER 50
+#define BALL_PELS_LOWER 10
 
 using namespace cv;
 using namespace std;
@@ -42,6 +47,9 @@ private:
 	int table[HALFTABLESIZE*2+1][HALFTABLESIZE*2+1];
 	Mat* lastImage;
 	vector<Mat> pastCenterCoordinates;
+	list<Point2f> vPreviousBallLocations;
+	bool tracking;
+	unsigned long trackedFrames;
 	int iNumberOfClusters; //expect cluster for 2 player + 1 ball times 2 for a possible 2nd pair
 	int amountOfPastCenterCoords;
 	
@@ -50,3 +58,5 @@ private:
 	void locateBallOpticalFlow(Mat& srcFrame, Mat& dstFrame, vector< pair<unsigned, unsigned>>& cForegroundList);
 	void locateBallForegroundClusters(Mat& srcFrame, Mat& dstFrame, vector< pair<unsigned, unsigned>>& cForegroundList);
 };
+
+#endif
