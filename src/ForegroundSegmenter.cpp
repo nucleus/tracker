@@ -14,7 +14,6 @@ ForegroundSegmenter::~ForegroundSegmenter() {
 	if(bProcessOnGPU) {
 		// In-device memories
 		cudaFree(d_frame);
-		cudaFree(d_dst);
 		cudaFree(d_tmpGray);
 		cudaFree(d_tmpGauss);
 		cudaFree(d_background);
@@ -51,7 +50,6 @@ void ForegroundSegmenter::useGPU(bool b) {
 		cutilSafeCall( cudaHostAlloc((void**)&h_frame, iBgWidth*iBgHeight*sizeof(uchar4), cudaHostAllocWriteCombined) );
 		cutilSafeCall( cudaHostAlloc((void**)&h_dst, iBgWidth*iBgHeight*sizeof(float), cudaHostAllocDefault) );
 		cutilSafeCall( cudaMalloc((void**)&d_frame, iBgWidth*iBgHeight*sizeof(uchar4)) );
-		cutilSafeCall( cudaMalloc((void**)&d_dst, iBgWidth*iBgHeight*sizeof(float)) );
 		cutilSafeCall( cudaMalloc((void**)&d_tmpGray, iBgWidth*iBgHeight*sizeof(float)) );
 		cutilSafeCall( cudaMalloc((void**)&d_tmpGauss, iBgWidth*iBgHeight*sizeof(float)) );
 		cutilSafeCall( cudaMalloc((void**)&d_background, iBgWidth*iBgHeight*sizeof(float)) );
@@ -70,7 +68,7 @@ void ForegroundSegmenter::uploadPreprocessFrame(Mat& frame) {
 	
 	// Copy frame to device and perform preprocessing
 	cutilSafeCall( cudaMemcpy(d_frame, h_frame, iBgWidth*iBgHeight*sizeof(uchar4), cudaMemcpyHostToDevice) );
-	preProcessImage(d_frame, d_tmpGray, d_tmpGauss, d_dst, iBgWidth, iBgHeight);
+	preProcessImage(d_frame, d_tmpGray, d_tmpGauss, d_background, iBgWidth, iBgHeight);
 }
 
 void ForegroundSegmenter::addFrameToModel(Mat& frame) {

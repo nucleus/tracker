@@ -20,6 +20,8 @@ texture<float, 2, cudaReadModeElementType> background_tex;	// current background
 
 __device__ __constant__ float kernel[GAUSSIAN_WINDOW_RADIUS];
 
+static int firstFrameProcessed = 1;
+
 /*	Function: SegmentAndUpdateBackgroundKernel
  * 	------------------------------------------
  * 	Segments the preprocessed input image using the background model.
@@ -136,7 +138,7 @@ void createKernel1D(unsigned ksize, string type) {
  * 	RGBA to grayscale conversion (which also converts uchar4 to float). Then, a gaussian blur filter is
  * 	implemented using separation into horizontal and vertical passes. 
  */
-void preProcessImage(uchar4* src, float* tmpGray, float* tmpGauss, float* final, unsigned width, unsigned height) {
+void preProcessImage(uchar4* src, float* tmpGray, float* tmpGauss, float* background, unsigned width, unsigned height) {
 	{
 	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<uchar4>();
         if(cudaBindTexture2D(0, input, src, channelDesc, width, height, width*sizeof(uchar4)) != cudaSuccess) {
@@ -181,6 +183,12 @@ void preProcessImage(uchar4* src, float* tmpGray, float* tmpGauss, float* final,
 	dim3 dimBlock(FS_BLOCKSIZE_X,FS_BLOCKSIZE_Y);
 	dim3 dimGrid((width+dimBlock.x-1)/dimBlock.x, (height+dimBlock.y-1)/dimBlock.y);
 	GaussianBlurVerticalKernel<<<dimGrid, dimBlock>>>(tmpGray, GAUSSIAN_WINDOW_RADIUS, width, height);
+	}
+	
+	// If this is the first frame ever processed, initialize background model to get the computation going
+	if(firstFrameProcessed) {
+		cutilSafeCall( cudaMemcpy(background, tmpGray, width*height*sizeof(float), cudaMemcpyDeviceToDevice) );
+		firstFrameProcessed = 0;
 	}
 	
         if(cudaBindTexture2D(0, inputProcessed, tmpGray, channelDesc, width, height, width*sizeof(float)) != cudaSuccess) {

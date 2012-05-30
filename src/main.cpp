@@ -228,8 +228,8 @@ int main(int argc, char** argv) {
 		if(bUseGPU) {
 			for(int y = 0; y < frame.rows; y++)
 				for(int x = 0; x < frame.cols; x++)
-					if(segmentedFrame.at<float>(y,x) > THRESH)
-						cForegroundList.push_back(make_pair(x,y));			
+					if(segmentedFrame.at<float>(y,x) == 255.0)
+						cForegroundList.push_back(make_pair(x,y));		
 		}
 		/** THIS IS WRAPPER CODE, REMOVE ASAP */
 		
@@ -241,7 +241,7 @@ int main(int argc, char** argv) {
 		gettimeofday(&end, NULL);
 		double detection = (double)timevaldiff(start,end);
 		
-		// cout << "Preprocess: " << preprocess << "ms, Capture: " << capture << "ms, Segmentation: "<< segmentation << "ms, Detection: "<< detection << "ms" << endl;
+// 		cout << "Preprocess: " << preprocess << "ms, Capture: " << capture << "ms, Segmentation: "<< segmentation << "ms, Detection: "<< detection << "ms" << endl;
 		
 		// Calculate maximum sustainable frame rate
 		double total = preprocess + backgroundadd + segmentation + detection;// + capture;

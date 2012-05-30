@@ -27,7 +27,7 @@ using namespace std;
 // CUDA reference functions
 void createKernel1D(unsigned ksize, string type);
 void segmentAndAddToBackground(float* segmented, float* background, unsigned width, unsigned height, float rate);
-void preProcessImage(uchar4* src, float* tmpGray, float* tmpGauss, float* dst, unsigned width, unsigned height);
+void preProcessImage(uchar4* src, float* tmpGray, float* tmpGauss, float* background, unsigned width, unsigned height);
 
 // Class containing the background model and foreground segmentation functionality
 class ForegroundSegmenter {
@@ -125,7 +125,7 @@ private:
 	double dLearningRate;
 	// GPU data storage
 	uchar4* h_frame, *d_frame;
-	float* h_dst, *d_dst, *d_tmpGray, *d_tmpGauss, *d_background;
+	float* h_dst, *d_tmpGray, *d_tmpGauss, *d_background;
 };
 
 #endif
