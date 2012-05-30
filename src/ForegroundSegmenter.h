@@ -16,21 +16,37 @@
 #include <vector>
 #include <utility>
 
+#include <cuda.h>
+#include <cutil_inline.h>
+
 #include "global.h"
 
 using namespace cv;
 using namespace std;
 
+// CUDA reference functions
+void createKernel1D(unsigned ksize, string type);
+void segmentAndAddToBackground(float* segmented, float* background, unsigned width, unsigned height, float rate);
+void preProcessImage(uchar4* src, float* tmpGray, float* tmpGauss, float* dst, unsigned width, unsigned height);
+
 // Class containing the background model and foreground segmentation functionality
 class ForegroundSegmenter {
 public:
-	ForegroundSegmenter();
+	ForegroundSegmenter();	
+	~ForegroundSegmenter();
 	
 	/*	Function: setImageParams
 	 *	------------------------
 	 *	Specify the core parameters of the background model image. 
 	 */
 	void setImageParams(unsigned int _width, unsigned int _height, unsigned int _channels);
+	
+	/*	Function: uploadPreprocessFrame
+	 * 	-------------------------------
+	 * 	If the GPU is used for background removal, this function uploads the current frame to the device,
+	 * 	converts it to grayscale and performs gaussian smoothing. 
+	 */
+	void uploadPreprocessFrame(Mat& frame);
 	
 	/*	Function: addFrameToModel
 	 *	-------------------------
@@ -57,14 +73,6 @@ public:
 		return cBgMean;
 	}
 	
-	/*	Function: modelDeviation
-	 *	-------------------
-	 *	Returns the deviation image D of the background model.
-	 */
-	Mat& modelDeviation() {
-		return cBgDeviation;
-	}
-	
 	/*	Function: useEdgeImages
 	 *	-------------------
 	 *	Specify whether the background model will be an edge image model.
@@ -73,6 +81,12 @@ public:
 		assert(iCurrentFramesModeled == 0);
 		bProcessEdgeImages = b;
 	}
+	
+	/*	Function: useGPU
+	 *	-------------------
+	 *	Specify whether the background model will be computed on the GPU.
+	 */
+	void useGPU(bool b = true);
 	
 	/*	Function: setMaxFrames
 	 *	-------------------
@@ -99,13 +113,19 @@ public:
 		iCurrentFramesModeled = 0;
 	}
 private:
+	// Current background model (CPU)
 	Mat cBgMean;
-	Mat cBgDeviation;
+	// Processing flags
 	bool bProcessEdgeImages;
+	bool bProcessOnGPU;
+	// Frame information
 	unsigned int iCurrentFramesModeled;
 	unsigned int iMaxFramesModeled;
 	unsigned int iBgWidth, iBgHeight, iBgChannels;
 	double dLearningRate;
+	// GPU data storage
+	uchar4* h_frame, *d_frame;
+	float* h_dst, *d_dst, *d_tmpGray, *d_tmpGauss, *d_background;
 };
 
 #endif
