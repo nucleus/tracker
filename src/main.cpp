@@ -201,20 +201,21 @@ int main(int argc, char** argv) {
 		gettimeofday(&end, NULL);
 		double capture = (double)timevaldiff(start,end);
 		
+		// In case of GPU processing, upload and prepare frame
+		gettimeofday(&start, NULL);
 		if(bUseGPU) {
-			gettimeofday(&start, NULL);
 			fg.uploadPreprocessFrame(frame);
-			gettimeofday(&end, NULL);
 		}
+		gettimeofday(&end, NULL);
 		double preprocess = (double)timevaldiff(start,end);
 		
 		// Update background model for every second image and measure time
+		gettimeofday(&start, NULL);
 		if(updateBackground) {
-			gettimeofday(&start, NULL);
 			fg.addFrameToModel(frame);
-			updateBackground = !updateBackground;
-			gettimeofday(&end, NULL);
 		}
+		updateBackground = !updateBackground;
+		gettimeofday(&end, NULL);
 		double backgroundadd = (double)timevaldiff(start, end);
 		
 		// Segment foreground for current frame and measure time
@@ -223,15 +224,14 @@ int main(int argc, char** argv) {
 		gettimeofday(&end, NULL);
 		double segmentation = (double)timevaldiff(start, end);
 		
-		// THIS IS WRAPPER CODE
+		/** THIS IS WRAPPER CODE, REMOVE ASAP */
 		if(bUseGPU) {
 			for(int y = 0; y < frame.rows; y++)
 				for(int x = 0; x < frame.cols; x++)
-					if(segmentedFrame.at<float>(y,x) > 100.0)
+					if(segmentedFrame.at<float>(y,x) > THRESH)
 						cForegroundList.push_back(make_pair(x,y));			
-			dilate(segmentedFrame, segmentedFrame, Mat(), Point(-1, -1), 2);
 		}
-		// THIS IS WRAPPER CODE
+		/** THIS IS WRAPPER CODE, REMOVE ASAP */
 		
 		// Detect ball among foreground objects and measure time
 		gettimeofday(&start, NULL);
@@ -249,6 +249,7 @@ int main(int argc, char** argv) {
 		if(maxfps < 1.0)
 			maxfps = 1.0;
 		
+		// Calculate momentary throughput and latency stats
 		framerate_avg *= frames_processed;
 		framerate_avg += maxfps;
 		frames_processed++;

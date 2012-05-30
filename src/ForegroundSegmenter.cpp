@@ -42,21 +42,23 @@ void ForegroundSegmenter::useGPU(bool b) {
 	bProcessOnGPU = b;
 	
 	// Initialize CUDA
-	if(cuInit(0) != CUDA_SUCCESS) {
-		exit(EXIT_FAILURE);
+	if(bProcessOnGPU) {
+		if(cuInit(0) != CUDA_SUCCESS) {
+			exit(EXIT_FAILURE);
+		}
+		
+		// If GPU is used, allocate memories for incoming frames and bg model
+		cutilSafeCall( cudaHostAlloc((void**)&h_frame, iBgWidth*iBgHeight*sizeof(uchar4), cudaHostAllocWriteCombined) );
+		cutilSafeCall( cudaHostAlloc((void**)&h_dst, iBgWidth*iBgHeight*sizeof(float), cudaHostAllocDefault) );
+		cutilSafeCall( cudaMalloc((void**)&d_frame, iBgWidth*iBgHeight*sizeof(uchar4)) );
+		cutilSafeCall( cudaMalloc((void**)&d_dst, iBgWidth*iBgHeight*sizeof(float)) );
+		cutilSafeCall( cudaMalloc((void**)&d_tmpGray, iBgWidth*iBgHeight*sizeof(float)) );
+		cutilSafeCall( cudaMalloc((void**)&d_tmpGauss, iBgWidth*iBgHeight*sizeof(float)) );
+		cutilSafeCall( cudaMalloc((void**)&d_background, iBgWidth*iBgHeight*sizeof(float)) );
+		
+		// Generate the smoothing kernel for the GPU
+		createKernel1D(GAUSSIAN_WINDOW_RADIUS, "gaussian");
 	}
-	
-	// If GPU is used, allocate memories for incoming frames and bg model
-	cutilSafeCall( cudaHostAlloc((void**)&h_frame, iBgWidth*iBgHeight*sizeof(uchar4), cudaHostAllocWriteCombined) );
-	cutilSafeCall( cudaHostAlloc((void**)&h_dst, iBgWidth*iBgHeight*sizeof(float), cudaHostAllocDefault) );
-	cutilSafeCall( cudaMalloc((void**)&d_frame, iBgWidth*iBgHeight*sizeof(uchar4)) );
-	cutilSafeCall( cudaMalloc((void**)&d_dst, iBgWidth*iBgHeight*sizeof(float)) );
-	cutilSafeCall( cudaMalloc((void**)&d_tmpGray, iBgWidth*iBgHeight*sizeof(float)) );
-	cutilSafeCall( cudaMalloc((void**)&d_tmpGauss, iBgWidth*iBgHeight*sizeof(float)) );
-	cutilSafeCall( cudaMalloc((void**)&d_background, iBgWidth*iBgHeight*sizeof(float)) );
-	
-	// Generate the smoothing kernel for the GPU
-	createKernel1D(GAUSSIAN_WINDOW_RADIUS, "gaussian");
 }
 
 void ForegroundSegmenter::uploadPreprocessFrame(Mat& frame) {

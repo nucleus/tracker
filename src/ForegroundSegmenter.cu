@@ -1,3 +1,11 @@
+/*
+ * 	File: ForegroundSegmenter.cu
+ * 	----------------------------
+ * 	This file contains the CUDA implementations of foreground segmentation.
+ * 
+ *	Written by Michael Andersch, 2012. 
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <cuda.h>
@@ -33,7 +41,7 @@ __global__ void SegmentAndUpdateBackgroundKernel(float* segmented, float* backgr
 	in_sample = fabs(in_sample - last_bg_sample);
 	in_sample = in_sample* in_sample;
 
-	if(in_sample > 100.0f)
+	if(in_sample > THRESH)
 		binary = 255.0f;
 	else
 		binary = 0.0f;
@@ -98,8 +106,7 @@ __global__ void Rgb2GrayKernel(float *dst, unsigned width, unsigned height) {
 
 /*	Function: createKernel1D
  * 	------------------------
- * 	This function is supposed to generate 1-dimensional gaussian and average kernels.
- * 	However, at the moment, the gaussian kernel is hardcoded due to some bug I was unable to find.
+ * 	This function generates 1-dimensional gaussian kernels.
  */
 void createKernel1D(unsigned ksize, string type) {
 	if(ksize%2 != 1) {
