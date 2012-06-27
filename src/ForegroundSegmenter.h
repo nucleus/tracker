@@ -16,6 +16,10 @@
 #include <vector>
 #include <utility>
 
+// If including both cuda and opencv, this prevents compiler warnings
+#undef MIN
+#undef MAX
+
 #include <cuda.h>
 #include <cutil_inline.h>
 
@@ -24,10 +28,13 @@
 using namespace cv;
 using namespace std;
 
-// CUDA reference functions
+// CUDA functions
 void createKernel1D(unsigned ksize, string type);
+void createCandidateKernel1D(unsigned ksize, string type);
+void calculateLowLevelCandidates(float* binary, float* temporary, float* h_dbg, uint32_t* candidates, unsigned width, unsigned height);
 void segmentAndAddToBackground(float* segmented, float* background, unsigned width, unsigned height, float rate);
-void preProcessImage(uchar4* src, float* tmpGray, float* tmpGauss, float* background, unsigned width, unsigned height);
+void preProcessImage(uchar3* src, float* tmpGray, float* tmpGauss, float* background, unsigned width, unsigned height);
+void testFastRgb2Gray(uchar3* src, float* dst, unsigned width, unsigned height);
 
 // Class containing the background model and foreground segmentation functionality
 class ForegroundSegmenter {
@@ -64,6 +71,14 @@ public:
 	 *	a given source frame, storing the result into the dstFrame location.
 	 */
 	void segment(Mat& srcFrame, Mat& dstFrame, vector< pair<unsigned, unsigned> >& cForegroundList);
+	
+	/*	Function: genLowLevelCandidates
+	 * 	-------------------------------
+	 * 	Processes a given binary foreground mask to generate
+	 * 	early ball candidate pixels by strong blur followed by
+	 * 	non-maximum suppression. 
+	 */
+	void genLowLevelCandidates(Mat& foreground, uint32_t candidates[ALLOWED_CANDIDATES+1]);
 	
 	/*	Function: modelMean
 	 *	-------------------
@@ -124,8 +139,9 @@ private:
 	unsigned int iBgWidth, iBgHeight, iBgChannels;
 	double dLearningRate;
 	// GPU data storage
-	uchar4* h_frame, *d_frame;
-	float* h_dst, *d_tmpGray, *d_tmpGauss, *d_background;
+	uchar3 *d_frame;
+	float *h_dst, *d_tmpGray, *d_tmpGauss, *d_background;
+	uint32_t *d_candidates;
 };
 
 #endif

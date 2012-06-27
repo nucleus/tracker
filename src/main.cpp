@@ -11,13 +11,21 @@ typedef struct timeval timer;
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
+#include <boost/thread/thread.hpp>
+#include <boost/program_options.hpp>
+namespace po = boost::program_options;
+
 #include "global.h"
 #include "ForegroundSegmenter.h"
 #include "BallDetection.h"
 #include "VideoBackend.h"
+#include "threading.h"
+#include "OptionParser.h"
 
 using namespace std;
 using namespace cv;
+using namespace boost;
+using namespace boost::this_thread;
 
 // Templated to-string conversion function
 template<typename T>
@@ -26,16 +34,6 @@ string convert(T sym) {
 	ss << sym;
 	return ss.str();
 }
-
-const string usage = "Usage: ./tracker [options]\n\t"
-					 "-s <input device> [CAM/DISK]\n\t"
-					 "-i <input video file>\n\t"
-					 "-d <output device> [SCREEN/DISK]\n\t"
-					 "-o <output video file>\n\t"
-					 "-f <background model frames>\n\t"
-					 "-l <learning rate>, interval: [0,1]\n\t"
-					 "-a <detection algorithm>, [0-motion estimation, 1-clustering, 2-generalized hough transform]\n\t"
-					 "-g [use GPU for processing if specified]\n";
 
 // Timing function usable for profiling
 double timevaldiff(timer& prior, timer& latter) {
@@ -46,91 +44,90 @@ double timevaldiff(timer& prior, timer& latter) {
 }
 
 int main(int argc, char** argv) {
-	int opt, tmp;
-	
-	string parse, sInfile = "", sOutfile = "";
+	OptionParser parser;
+	parser.parse(argc, argv, CONFIG_FILE);
+	po::variables_map cfg = parser.getOptions();
+
+	string sInfile = "", sOutfile = "";
 	
 	// Processing flags
 	bool bSourceIsFile = true;
 	bool bDestIsFile = true;
 	bool bUseGPU = false;
+	bool bThreaded = false;
 	unsigned int iModelFrames = DEFAULT_MODEL_TRAINING_COUNT;
 	double dLearningRate = DEFAULT_LEARNING_RATE;
-	detectionAlgorithm algo = ALGO_OPTICAL;
+	detectionAlgorithm algo = ALGO_MOVING;
 	
 	// Source video information
 	unsigned int iInputWidth, iInputHeight, iInputFps;
 	
-	while((opt = getopt(argc, argv, "s:i:d:o:f:l:a:g")) != -1) {
-		switch(opt) {
-			case 's':
-				parse.assign(optarg);
-				if(parse == "CAM")
-					bSourceIsFile = false;
-				else if(parse == "DISK") {}
-				else {
-					cerr << ERROR("unrecognized video source") << endl << usage;
-					return EXIT_FAILURE;
-				}
-				break;
-			case 'i':
-				sInfile.assign(optarg);
-				break;
-			case 'd':
-				parse.assign(optarg);
-				if(parse == "SCREEN")
-					bDestIsFile = false;
-				else if(parse == "DISK") {}
-				else {
-					cerr << ERROR("unrecognized output destination") << endl << usage;
-					return EXIT_FAILURE;
-				}
-				break;
-			case 'o':
-				sOutfile.assign(optarg);
-				break;
-			case 'f':
-				iModelFrames = atoi(optarg);
-				if(iModelFrames < 1 || iModelFrames > 10000) {
-					cerr << ERROR("bad model frame count") << endl;
-					return EXIT_FAILURE;
-				}
-				break;
-			case 'l':
-				dLearningRate = atof(optarg);
-				if(dLearningRate <= 0.0 || dLearningRate >= 1.0) {
-					cerr << ERROR("bad model learning rate") << endl;
-					return EXIT_FAILURE;
-				}
-				break;
-			case 'a':
-				tmp = atoi(optarg);
-				if(tmp == 0)
-					algo = ALGO_OPTICAL;
-				else if(tmp == 1)
-					algo = ALGO_CLUSTER;
-				else if(tmp == 2)
-					algo = ALGO_MOVING;
-				else {
-					cerr << usage;
-					return EXIT_FAILURE;
-				}
-				break;
-			case 'g':
-				bUseGPU = true;
-				break;
-			default:
-				cerr << usage;
-				return EXIT_FAILURE;
-				break;
+	/** OPTION READ-IN BEGIN **/
+	if(cfg.count("help")) {
+		cerr << parser.getDescription() << endl;
+		return EXIT_SUCCESS;
+	}
+
+	if(cfg.count("source")) {
+		if(cfg["source"].as<string>() == "CAM")
+			bSourceIsFile = false;
+		else if(cfg["source"].as<string>() == "DISK")
+			bSourceIsFile = true;
+		else {
+			cerr << ERROR("unrecognized video source") << endl;
+			return EXIT_FAILURE;
 		}
 	}
 	
-	if((bSourceIsFile && sInfile == "") || bDestIsFile && sOutfile == "") {
-		cerr << ERROR("missing file specification") << endl << usage;
-		return EXIT_FAILURE;
+	if(cfg.count("infile"))
+		sInfile.assign(cfg["infile"].as<string>());
+	
+	if(cfg.count("destination")) {
+		if(cfg["destination"].as<string>() == "SCREEN") {
+			bDestIsFile = false;
+			sOutfile = "SCREEN";
+		} else if(cfg["destination"].as<string>() == "DISK")
+			bDestIsFile = true;
+		else {
+			cerr << ERROR("unrecognized output destination") << endl;
+			return EXIT_FAILURE;
+		}
 	}
 	
+	if(bDestIsFile && cfg.count("outfile"))
+		sOutfile.assign(cfg["outfile"].as<string>());
+	
+	if(cfg.count("modelframes")) {
+		iModelFrames = cfg["modelframes"].as<unsigned>();
+		if(iModelFrames == 0 || iModelFrames > 1000) {
+			cerr << ERROR("bad model frame count") << endl;
+			return EXIT_FAILURE;
+		}
+	}
+	
+	if(cfg.count("learnrate")) {
+		dLearningRate = cfg["learnrate"].as<double>();
+		if(dLearningRate <= 0.0 || dLearningRate >= 1.0) {
+			cerr << ERROR("bad model learning rate") << endl;
+			return EXIT_FAILURE;
+		}
+	}
+	
+	if(cfg.count("detection")) {
+		algo = (detectionAlgorithm)cfg["detection"].as<int>();
+		if(algo < ALGO_MOVING || algo > ALGO_CANDIDATESNEW) {
+			cerr << parser.getDescription() << endl;
+			return EXIT_FAILURE;
+		}
+	}
+	
+	if(cfg.count("gpu"))
+		bUseGPU = true;
+	
+	if(cfg.count("threaded"))
+		bThreaded = true;
+	/** OPTION READ-IN END **/
+
 	/** FRONT END SETUP BEGIN **/
 	VideoCapture cap;	
 	// Try to open the video stream
@@ -162,111 +159,154 @@ int main(int argc, char** argv) {
 	cout << "VIDEO DESTINATION: " << sOutfile << " @ DIVX codec" << endl;
 	/** BACK END SETUP END **/
 	
-	BallDetection bd;
-	bd.setImageParams(iInputWidth, iInputHeight, 1);
-	
-	ForegroundSegmenter fg;
-	fg.setImageParams(iInputWidth, iInputHeight, 1);
-	fg.setMaxFrames(iModelFrames);
-	fg.setLearningRate(dLearningRate);
-	fg.useGPU(bUseGPU);
-	
-	// If CPU background modeling is used, train initial frames to model
-	if(!bUseGPU) {		
-		for(int i = 0; i < iModelFrames; i++) {
-			Mat frame;
-			cap >> frame;
-			fg.addFrameToModel(frame);
-		}
-	}
-	
-	Mat dst(iInputHeight, iInputWidth, CV_8UC3);
-	Mat result(iInputHeight, iInputWidth, CV_8UC3);
-	
-	// Main tracking loop
-	Mat frame, segmentedFrame, previousImage;
-	bool updateBackground = true;
-	bool firstFrame = true;
+	timer start, end;
 	double framerate_avg = INITIAL_FPS;
 	unsigned long long frames_processed = 1;
 	
-	timer start, end;
-	
-	while(1) {
-		vector< pair<unsigned,unsigned> > cForegroundList;
+	// This is the software pipelined implementation of the core tracking loop
+	if(bThreaded) {
+		Mat frame;
 		
-		// Capture current frame and measure time
-		gettimeofday(&start, NULL);
-		cap >> frame;
-		gettimeofday(&end, NULL);
-		double capture = (double)timevaldiff(start,end);
+		SynchronisedQueue<Mat*> readerToProcessorQ(PIPELINE_BUFFER_SIZE);
+		SynchronisedQueue<Mat*> processorToWriterQ(PIPELINE_BUFFER_SIZE);
 		
-		// In case of GPU processing, upload and prepare frame
+		ReaderThread rt(&cap, &readerToProcessorQ, iInputWidth, iInputHeight);
+		ProcessorThread pt(&readerToProcessorQ, &processorToWriterQ, bUseGPU, iInputWidth, iInputHeight, iModelFrames, dLearningRate, algo);
+		
+		boost::thread reader(rt);
+		boost::thread processor(pt);
+		
 		gettimeofday(&start, NULL);
-		if(bUseGPU) {
-			fg.uploadPreprocessFrame(frame);
+		
+		while(true) {
+			Mat* tmp = processorToWriterQ.Dequeue();
+			frame = tmp->clone();
+			delete tmp;
+			vb << frame;
+			
+			gettimeofday(&end, NULL);
+			double throughput = (double)timevaldiff(start, end);
+			double maxfps = 1.0/(throughput/1000.0);
+			if(maxfps < 1.0)
+				maxfps = 1.0;
+			framerate_avg *= frames_processed;
+			framerate_avg += maxfps;
+			frames_processed++;
+			framerate_avg /= frames_processed;
+			cout << "Instantaneous frame rate: " << maxfps << ", average frame rate: " << framerate_avg << "\r" << flush;
+			start = end;
+			
+			if(!bDestIsFile)
+				if(waitKey(1) >= 0) break;
 		}
-		gettimeofday(&end, NULL);
-		double preprocess = (double)timevaldiff(start,end);
+	} else { // This is the single-threaded core tracking loop
+		BallDetection bd;
+		bd.setImageParams(iInputWidth, iInputHeight, 1);
 		
-		// Update background model for every second image and measure time
-		gettimeofday(&start, NULL);
-		if(updateBackground) {
-			fg.addFrameToModel(frame);
+		ForegroundSegmenter fg;
+		fg.setImageParams(iInputWidth, iInputHeight, 1);
+		fg.setMaxFrames(iModelFrames);
+		fg.setLearningRate(dLearningRate);
+		fg.useGPU(bUseGPU);
+		
+		// If CPU background modeling is used, train initial frames to model
+		if(!bUseGPU) {		
+			for(int i = 0; i < iModelFrames; i++) {
+				Mat frame;
+				cap >> frame;
+				fg.addFrameToModel(frame);
+			}
 		}
-		updateBackground = !updateBackground;
-		gettimeofday(&end, NULL);
-		double backgroundadd = (double)timevaldiff(start, end);
 		
-		// Segment foreground for current frame and measure time
-		gettimeofday(&start, NULL);
-		fg.segment(frame, segmentedFrame, cForegroundList);
-		gettimeofday(&end, NULL);
-		double segmentation = (double)timevaldiff(start, end);
-		
-		/** THIS IS WRAPPER CODE, REMOVE ASAP */
-		if(bUseGPU) {
-			for(int y = 0; y < frame.rows; y++)
-				for(int x = 0; x < frame.cols; x++)
-					if(segmentedFrame.at<float>(y,x) == 255.0)
-						cForegroundList.push_back(make_pair(x,y));		
-		}
-		/** THIS IS WRAPPER CODE, REMOVE ASAP */
-		
-		// Detect ball among foreground objects and measure time
-		gettimeofday(&start, NULL);
-		if(!firstFrame)
-			bd.searchBall(segmentedFrame, frame, cForegroundList, algo);
-		firstFrame = false;
-		gettimeofday(&end, NULL);
-		double detection = (double)timevaldiff(start,end);
-		
-// 		cout << "Preprocess: " << preprocess << "ms, Capture: " << capture << "ms, Segmentation: "<< segmentation << "ms, Detection: "<< detection << "ms" << endl;
-		
-		// Calculate maximum sustainable frame rate
-		double total = preprocess + backgroundadd + segmentation + detection;// + capture;
-		double maxfps = 1.0/(total/1000.0);
-		if(maxfps < 1.0)
-			maxfps = 1.0;
-		
-		// Calculate momentary throughput and latency stats
-		framerate_avg *= frames_processed;
-		framerate_avg += maxfps;
-		frames_processed++;
-		framerate_avg /= frames_processed;
- 		cout << "Instantaneous frame rate: " << maxfps << ", average frame rate: " << framerate_avg << "\r" << flush;
- 		putText(frame, convert(framerate_avg), Point(10,30), FONT_HERSHEY_PLAIN, 1, Scalar::all(255), 2, 8);
-		
-		// Output frame to disk / screen
-		vb << frame;
-		if(!bDestIsFile)
-			if(waitKey(30) >= 0) break;
+		Mat frame, segmentedFrame, previousImage, dbg;
+		bool updateBackground = true;
+		bool firstFrame = true;
 
-		// For optical flow based ball detection: update motion reference frame
-		previousImage = segmentedFrame.clone();
-		bd.updatePreviousImage(&previousImage);
+		while(1) {
+			uint32_t candidates[ALLOWED_CANDIDATES+1];
+			vector< pair<unsigned,unsigned> > cForegroundList;
+			
+			// Capture current frame and measure time
+			gettimeofday(&start, NULL);
+			cap >> frame;
+			gettimeofday(&end, NULL);
+			double capture = timevaldiff(start,end);
+			
+			// In case of GPU processing, upload and prepare frame
+			gettimeofday(&start, NULL);
+			if(bUseGPU) {
+				fg.uploadPreprocessFrame(frame);
+			}
+			gettimeofday(&end, NULL);
+			double preprocess = timevaldiff(start,end);
+			// Update background model for every second image and measure time
+			gettimeofday(&start, NULL);
+			if(updateBackground) {
+				fg.addFrameToModel(frame);
+			}
+			updateBackground = !updateBackground;
+			gettimeofday(&end, NULL);
+			double backgroundadd = timevaldiff(start, end);
+			
+			// Segment foreground for current frame and measure time
+			gettimeofday(&start, NULL);
+			fg.segment(frame, segmentedFrame, cForegroundList);
+			gettimeofday(&end, NULL);
+			double segmentation = timevaldiff(start, end);
+			
+			// Generate low level ball candidates
+			gettimeofday(&start, NULL);
+			fg.genLowLevelCandidates(segmentedFrame, candidates);
+			gettimeofday(&end, NULL);
+			double candgen = bUseGPU ? 0.5 : timevaldiff(start, end); // for some reason, timevaldiff reports 1ms higher time than CUDA events on this stage, so we fix it to 0.5ms as reported by CUDA events
+			
+			/** THIS IS WRAPPER CODE, REMOVE ASAP */
+			if(bUseGPU) {
+				for(int y = 0; y < frame.rows; y++)
+					for(int x = 0; x < frame.cols; x++)
+						if(segmentedFrame.at<float>(y,x) == 255.0)
+							cForegroundList.push_back(make_pair(x,y));		
+			}
+			/** THIS IS WRAPPER CODE, REMOVE ASAP */
+			
+			// Detect ball among foreground objects and measure time
+			gettimeofday(&start, NULL);
+			if(!firstFrame)
+				bd.searchBall(segmentedFrame, frame, cForegroundList, candidates, algo);
+			firstFrame = false;
+			gettimeofday(&end, NULL);
+			double detection = timevaldiff(start,end);
+			
+			// Output frame to disk / screen
+			gettimeofday(&start, NULL);
+			vb << frame;
+			gettimeofday(&end, NULL);
+			double display = timevaldiff(start, end);
+			if(!bDestIsFile)
+				if(waitKey(30) >= 0) break;
+
+			// For optical flow based ball detection: update motion reference frame
+			previousImage = segmentedFrame.clone();
+			bd.updatePreviousImage(&previousImage);
+			
+// 			cout << "Capture: " << capture << "ms, Preprocess: " << preprocess << "ms, Background Update: " << backgroundadd << "ms, Segmentation: "<< segmentation << "ms, CandidateGeneration: " << candgen << "ms,  Detection: "<< detection << "ms, Display: " << display << "ms" << endl;
+			
+			// Calculate maximum sustainable frame rate
+			double total = preprocess + backgroundadd + segmentation + detection + candgen;// + capture + display;
+			double maxfps = 1.0/(total/1000.0);
+			if(maxfps < 1.0)
+				maxfps = 1.0;
+			
+			// Calculate momentary throughput and latency stats
+			framerate_avg *= frames_processed;
+			framerate_avg += maxfps;
+			frames_processed++;
+			framerate_avg /= frames_processed;
+ 			cout << "Instantaneous frame rate: " << maxfps << ", average frame rate: " << framerate_avg << "\r" << flush;
+			putText(frame, convert(framerate_avg), Point(10,30), FONT_HERSHEY_PLAIN, 1, Scalar::all(255), 2, 8);
+		}
 	}
-
+	
 	return 0;
 }
 

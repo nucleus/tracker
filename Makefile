@@ -207,6 +207,30 @@ src/main.cpp.s:
 	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/main.cpp.s
 .PHONY : src/main.cpp.s
 
+src/threading.o: src/threading.cpp.o
+.PHONY : src/threading.o
+
+# target to build an object file
+src/threading.cpp.o:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/threading.cpp.o
+.PHONY : src/threading.cpp.o
+
+src/threading.i: src/threading.cpp.i
+.PHONY : src/threading.i
+
+# target to preprocess a source file
+src/threading.cpp.i:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/threading.cpp.i
+.PHONY : src/threading.cpp.i
+
+src/threading.s: src/threading.cpp.s
+.PHONY : src/threading.s
+
+# target to generate assembly for a file
+src/threading.cpp.s:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/threading.cpp.s
+.PHONY : src/threading.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -228,6 +252,9 @@ help:
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/threading.o"
+	@echo "... src/threading.i"
+	@echo "... src/threading.s"
 .PHONY : help
 
 
