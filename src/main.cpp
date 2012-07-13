@@ -27,7 +27,9 @@ using namespace cv;
 using namespace boost;
 using namespace boost::this_thread;
 
-// Templated to-string conversion function
+/*!
+ * Templated to-string conversion function
+ */
 template<typename T>
 string convert(T sym) {
 	stringstream ss;
@@ -35,7 +37,9 @@ string convert(T sym) {
 	return ss.str();
 }
 
-// Timing function usable for profiling
+/*!
+ * Timing function usable for profiling.
+ */
 double timevaldiff(timer& prior, timer& latter) {
 	double x =
 	(double)(latter.tv_usec - prior.tv_usec) / 1000.0 +
@@ -43,6 +47,9 @@ double timevaldiff(timer& prior, timer& latter) {
 	return x;
 }
 
+/*!
+ * Main function.
+ */
 int main(int argc, char** argv) {
 	OptionParser parser;
 	parser.parse(argc, argv, CONFIG_FILE);
@@ -62,7 +69,7 @@ int main(int argc, char** argv) {
 	// Source video information
 	unsigned int iInputWidth, iInputHeight, iInputFps;
 	
-	/** OPTION READ-IN BEGIN **/
+	/* OPTION READ-IN BEGIN */
 	if(cfg.count("help")) {
 		cerr << parser.getDescription() << endl;
 		return EXIT_SUCCESS;
@@ -126,9 +133,9 @@ int main(int argc, char** argv) {
 	
 	if(cfg.count("threaded"))
 		bThreaded = true;
-	/** OPTION READ-IN END **/
+	/* OPTION READ-IN END */
 
-	/** FRONT END SETUP BEGIN **/
+	/* FRONT END SETUP BEGIN */
 	VideoCapture cap;	
 	// Try to open the video stream
 	if(bSourceIsFile) {
@@ -150,18 +157,22 @@ int main(int argc, char** argv) {
 		iInputFps = 25;
 	}
 	cout << "VIDEO SOURCE: " << iInputWidth << "x" << iInputHeight << " @ " << iInputFps << "Hz" << endl;
-	/** FRONT END SETUP END **/
+	/* FRONT END SETUP END */
 	
-	/** BACK END SETUP BEGIN **/
+	/* BACK END SETUP BEGIN */
 	VideoBackend vb(bDestIsFile ? "DISK" : "SCREEN");
 	if(bDestIsFile)
 		vb.setFileParams(sOutfile, CV_FOURCC('D','I','V','X'), iInputFps, Size(iInputWidth, iInputHeight), true);
 	cout << "VIDEO DESTINATION: " << sOutfile << " @ DIVX codec" << endl;
-	/** BACK END SETUP END **/
+	/* BACK END SETUP END */
 	
 	timer start, end;
 	double framerate_avg = INITIAL_FPS;
 	unsigned long long frames_processed = 1;
+
+	int displayfps = 0;
+	int skipframes = 0;
+	int key;
 	
 	// This is the software pipelined implementation of the core tracking loop
 	if(bThreaded) {
@@ -231,6 +242,11 @@ int main(int argc, char** argv) {
 			cap >> frame;
 			gettimeofday(&end, NULL);
 			double capture = timevaldiff(start,end);
+
+			if(skipframes > 0) {
+				skipframes--;
+				continue;
+			}
 			
 			// In case of GPU processing, upload and prepare frame
 			gettimeofday(&start, NULL);
@@ -258,16 +274,16 @@ int main(int argc, char** argv) {
 			gettimeofday(&start, NULL);
 			fg.genLowLevelCandidates(segmentedFrame, candidates);
 			gettimeofday(&end, NULL);
-			double candgen = bUseGPU ? 0.5 : timevaldiff(start, end); // for some reason, timevaldiff reports 1ms higher time than CUDA events on this stage, so we fix it to 0.5ms as reported by CUDA events
+			double candgen = timevaldiff(start, end);
 			
-			/** THIS IS WRAPPER CODE, REMOVE ASAP */
+			/* THIS IS WRAPPER CODE, REMOVE ASAP */
 			if(bUseGPU) {
 				for(int y = 0; y < frame.rows; y++)
 					for(int x = 0; x < frame.cols; x++)
 						if(segmentedFrame.at<float>(y,x) == 255.0)
 							cForegroundList.push_back(make_pair(x,y));		
 			}
-			/** THIS IS WRAPPER CODE, REMOVE ASAP */
+			/* THIS IS WRAPPER CODE, REMOVE ASAP */
 			
 			// Detect ball among foreground objects and measure time
 			gettimeofday(&start, NULL);
@@ -276,14 +292,31 @@ int main(int argc, char** argv) {
 			firstFrame = false;
 			gettimeofday(&end, NULL);
 			double detection = timevaldiff(start,end);
-			
+
+			//Display FPS if displaying FPS is enabled			
+			if(displayfps == 1)
+				putText(frame, convert(framerate_avg), Point(10, 30), FONT_HERSHEY_PLAIN, 1, Scalar::all(255), 2, 8);
+
 			// Output frame to disk / screen
 			gettimeofday(&start, NULL);
 			vb << frame;
 			gettimeofday(&end, NULL);
 			double display = timevaldiff(start, end);
-			if(!bDestIsFile)
-				if(waitKey(30) >= 0) break;
+
+			//Check the pressed key and act accordingly
+			if(!bDestIsFile) {
+				key = (waitKey(30)&0xFFFF);
+				if(key == 32) //SPACE
+					bd.toggleBackground(); //Change the displayed background
+				else if(key == 113) //Q
+					break; //Quit
+				else if(key == 115) //S
+					imwrite("screenshot.jpg", frame); //Save a screenshot
+				else if(key == 102) //F
+					displayfps ^= 1; //Toggle displaying of FPS
+				else if(key == 116) //T
+					skipframes = 1000; //Skip next 1000 frames
+			}
 
 			// For optical flow based ball detection: update motion reference frame
 			previousImage = segmentedFrame.clone();
@@ -303,7 +336,6 @@ int main(int argc, char** argv) {
 			frames_processed++;
 			framerate_avg /= frames_processed;
  			cout << "Instantaneous frame rate: " << maxfps << ", average frame rate: " << framerate_avg << "\r" << flush;
-			putText(frame, convert(framerate_avg), Point(10,30), FONT_HERSHEY_PLAIN, 1, Scalar::all(255), 2, 8);
 		}
 	}
 	

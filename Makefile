@@ -39,10 +39,10 @@ RM = /usr/bin/cmake -E remove -f
 CMAKE_EDIT_COMMAND = /usr/bin/cmake-gui
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/michael/Documents/tracker
+CMAKE_SOURCE_DIR = /home/michael/Documents/final
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/michael/Documents/tracker
+CMAKE_BINARY_DIR = /home/michael/Documents/final
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -69,9 +69,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/michael/Documents/tracker/CMakeFiles /home/michael/Documents/tracker/CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/michael/Documents/final/CMakeFiles /home/michael/Documents/final/CMakeFiles/progress.marks
 	$(MAKE) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/michael/Documents/tracker/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/michael/Documents/final/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -135,6 +135,30 @@ src/BallDetection.cpp.s:
 	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/BallDetection.cpp.s
 .PHONY : src/BallDetection.cpp.s
 
+src/Candidate.o: src/Candidate.cpp.o
+.PHONY : src/Candidate.o
+
+# target to build an object file
+src/Candidate.cpp.o:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/Candidate.cpp.o
+.PHONY : src/Candidate.cpp.o
+
+src/Candidate.i: src/Candidate.cpp.i
+.PHONY : src/Candidate.i
+
+# target to preprocess a source file
+src/Candidate.cpp.i:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/Candidate.cpp.i
+.PHONY : src/Candidate.cpp.i
+
+src/Candidate.s: src/Candidate.cpp.s
+.PHONY : src/Candidate.s
+
+# target to generate assembly for a file
+src/Candidate.cpp.s:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/Candidate.cpp.s
+.PHONY : src/Candidate.cpp.s
+
 src/ForegroundSegmenter.o: src/ForegroundSegmenter.cpp.o
 .PHONY : src/ForegroundSegmenter.o
 
@@ -158,6 +182,78 @@ src/ForegroundSegmenter.s: src/ForegroundSegmenter.cpp.s
 src/ForegroundSegmenter.cpp.s:
 	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/ForegroundSegmenter.cpp.s
 .PHONY : src/ForegroundSegmenter.cpp.s
+
+src/GridC.o: src/GridC.cpp.o
+.PHONY : src/GridC.o
+
+# target to build an object file
+src/GridC.cpp.o:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/GridC.cpp.o
+.PHONY : src/GridC.cpp.o
+
+src/GridC.i: src/GridC.cpp.i
+.PHONY : src/GridC.i
+
+# target to preprocess a source file
+src/GridC.cpp.i:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/GridC.cpp.i
+.PHONY : src/GridC.cpp.i
+
+src/GridC.s: src/GridC.cpp.s
+.PHONY : src/GridC.s
+
+# target to generate assembly for a file
+src/GridC.cpp.s:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/GridC.cpp.s
+.PHONY : src/GridC.cpp.s
+
+src/GridP.o: src/GridP.cpp.o
+.PHONY : src/GridP.o
+
+# target to build an object file
+src/GridP.cpp.o:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/GridP.cpp.o
+.PHONY : src/GridP.cpp.o
+
+src/GridP.i: src/GridP.cpp.i
+.PHONY : src/GridP.i
+
+# target to preprocess a source file
+src/GridP.cpp.i:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/GridP.cpp.i
+.PHONY : src/GridP.cpp.i
+
+src/GridP.s: src/GridP.cpp.s
+.PHONY : src/GridP.s
+
+# target to generate assembly for a file
+src/GridP.cpp.s:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/GridP.cpp.s
+.PHONY : src/GridP.cpp.s
+
+src/Path.o: src/Path.cpp.o
+.PHONY : src/Path.o
+
+# target to build an object file
+src/Path.cpp.o:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/Path.cpp.o
+.PHONY : src/Path.cpp.o
+
+src/Path.i: src/Path.cpp.i
+.PHONY : src/Path.i
+
+# target to preprocess a source file
+src/Path.cpp.i:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/Path.cpp.i
+.PHONY : src/Path.cpp.i
+
+src/Path.s: src/Path.cpp.s
+.PHONY : src/Path.s
+
+# target to generate assembly for a file
+src/Path.cpp.s:
+	$(MAKE) -f CMakeFiles/tracker.dir/build.make CMakeFiles/tracker.dir/src/Path.cpp.s
+.PHONY : src/Path.cpp.s
 
 src/VideoBackend.o: src/VideoBackend.cpp.o
 .PHONY : src/VideoBackend.o
@@ -243,9 +339,21 @@ help:
 	@echo "... src/BallDetection.o"
 	@echo "... src/BallDetection.i"
 	@echo "... src/BallDetection.s"
+	@echo "... src/Candidate.o"
+	@echo "... src/Candidate.i"
+	@echo "... src/Candidate.s"
 	@echo "... src/ForegroundSegmenter.o"
 	@echo "... src/ForegroundSegmenter.i"
 	@echo "... src/ForegroundSegmenter.s"
+	@echo "... src/GridC.o"
+	@echo "... src/GridC.i"
+	@echo "... src/GridC.s"
+	@echo "... src/GridP.o"
+	@echo "... src/GridP.i"
+	@echo "... src/GridP.s"
+	@echo "... src/Path.o"
+	@echo "... src/Path.i"
+	@echo "... src/Path.s"
 	@echo "... src/VideoBackend.o"
 	@echo "... src/VideoBackend.i"
 	@echo "... src/VideoBackend.s"

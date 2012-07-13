@@ -16,9 +16,20 @@
 using namespace std;
 using namespace cv;
 
+/*!
+ * 	Class: VideoBackend.
+ * 
+ * 	Class responsible for handling feedback of the processed video stream
+ * 	to the user. VideoBackend is capable of handling output to the screen
+ * 	and to system disk.
+ */
 class VideoBackend {
 public:
-	// Constructor, takes either DISK or SCREEN as output device
+	/*!
+	 *	Constructor.
+	 * 
+	 *	Takes either DISK or SCREEN as output device
+	 */
 	VideoBackend(string device) {
 		bWriteStreamToDisk = (device == "DISK");
 		if(!bWriteStreamToDisk)
@@ -27,10 +38,10 @@ public:
 	
 	VideoBackend& operator<< (Mat& img);
 	
-	/*
-	 * Function: setFileParameters
-	 * ---------------------------
-	 * Configures the VideoWriter object to write the desired type of video.
+	/*!
+	 * 	Function: setFileParameters.
+	 * 
+	 * 	Configures the VideoWriter object to write the desired type of video.
 	 */
 	void setFileParams(const string& filename, int codec, double fps, Size framesize, bool isColor = true);
 private:

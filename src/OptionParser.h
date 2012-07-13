@@ -18,6 +18,11 @@ using namespace std;
 #include "global.h"
 #include "BallDetection.h"
 
+/*!
+ * 	Class: OptionParser.
+ * 
+ * 	Class encapsulating a boost library program_options option parser.
+ */
 class OptionParser {
 public:
 	OptionParser() : config("Configuration") {
@@ -35,6 +40,11 @@ public:
 		
 	};
 	
+	/*!
+	 * 	Function: parse.
+	 * 
+	 * 	Uses the preconfigured and initialized option parser to parse a config file.
+	 */
 	void parse(int ac, char** av, string config_file) {
 		ifstream ifs(config_file.c_str());
 		if (!ifs) {
@@ -49,10 +59,20 @@ public:
 		notify(vm);
 	};
 	
+	/*!
+	 * 	Function: getOptions.
+	 * 
+	 * 	Returns the filled option map.
+	 */
 	variables_map& getOptions() {
 		return vm;
 	};
 	
+	/*!
+	 * 	Function: getDescription.
+	 * 
+	 * 	Returns the option description.
+	 */
 	options_description& getDescription() {
 		return config;
 	}

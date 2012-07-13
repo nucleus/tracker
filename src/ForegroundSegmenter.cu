@@ -30,8 +30,8 @@ __device__ __constant__ float kernel_wide[GAUSSIAN_WIDTH_CAND];
 
 static int firstFrameProcessed = 1;
 
-/*	Function: NonMaximumSuppressionKernel
- * 	------------------------------------------
+/*!	Function: NonMaximumSuppressionKernel.
+ * 
  * 	Processes the strongly blurred binary foreground image to perform
  *	non-maximum suppression on windows of pels. Maximum pixels are re-
  *	ported as possible ball candidates. 
@@ -63,8 +63,8 @@ __global__ void NonMaximumSuppressionKernel(uint32_t* candidates, unsigned width
 	}
 }
 
-/*	Function: SegmentAndUpdateBackgroundKernel
- * 	------------------------------------------
+/*!	Function: SegmentAndUpdateBackgroundKernel.
+ * 
  * 	Segments the preprocessed input image using the background model.
  * 	Output is a foreground binary image and an updated background model. 
  */
@@ -93,8 +93,8 @@ __global__ void SegmentAndUpdateBackgroundKernel(float* segmented, float* backgr
 	background[offset] = new_bg_sample;
 }
 
-/*	Function: GaussianBlurHorizontalKernel
- * 	------------------------------------
+/*!	Function: GaussianBlurHorizontalKernel.
+ * 
  * 	The horizontal pass of the gaussian filtering operation.
  */
 __global__ void GaussianBlurHorizontalKernel(float* dst, unsigned ksize, unsigned width, unsigned height) {
@@ -112,8 +112,8 @@ __global__ void GaussianBlurHorizontalKernel(float* dst, unsigned ksize, unsigne
 	dst[offset] = sum;
 }	
 
-/*	Function: GaussianBlurVerticalKernel
- * 	------------------------------------
+/*!	Function: GaussianBlurVerticalKernel.
+ * 
  * 	The vertical pass of the gaussian filtering operation.
  */
 __global__ void GaussianBlurVerticalKernel(float* dst, unsigned ksize, unsigned width, unsigned height) {
@@ -131,8 +131,8 @@ __global__ void GaussianBlurVerticalKernel(float* dst, unsigned ksize, unsigned 
 	dst[offset] = sum;
 }
 
-/*	Function: WideGaussianBlurHorizontalKernel
- * 	------------------------------------------
+/*!	Function: WideGaussianBlurHorizontalKernel.
+ * 
  * 	The horizontal pass of the wide gaussian filtering operation.
  */
 __global__ void WideGaussianBlurHorizontalKernel(float* dst, unsigned ksize, unsigned width, unsigned height) {
@@ -150,8 +150,8 @@ __global__ void WideGaussianBlurHorizontalKernel(float* dst, unsigned ksize, uns
 	dst[offset] = sum;
 }	
 
-/*	Function: WideGaussianBlurVerticalKernel
- * 	----------------------------------------
+/*!	Function: WideGaussianBlurVerticalKernel.
+ * 
  * 	The vertical pass of the wide gaussian filtering operation.
  */
 __global__ void WideGaussianBlurVerticalKernel(float* dst, unsigned ksize, unsigned width, unsigned height) {
@@ -169,8 +169,8 @@ __global__ void WideGaussianBlurVerticalKernel(float* dst, unsigned ksize, unsig
 	dst[offset] = sum;
 }
 
-/*	Function: Rgb2GrayKernel
- * 	------------------------
+/*!	Function: Rgb2GrayKernel.
+ * 
  * 	This kernel converts the input image in texture memory to grayscale and stores it to dst.
  */
 __global__ void Rgb2GrayKernel(float *dst, unsigned width, unsigned height) {
@@ -187,8 +187,8 @@ __global__ void Rgb2GrayKernel(float *dst, unsigned width, unsigned height) {
 	dst[offset] = gray;
 }
 
-/*	Function: CoalescedRgb2GrayKernel
- * 	---------------------------------
+/*!	Function: CoalescedRgb2GrayKernel.
+ * 
  * 	This kernel converts the input image in texture memory to grayscale and stores it to dst.
  * 
  * 	The difference to the kernel above is the direct reading of the OpenCV Vec3b input
@@ -215,8 +215,8 @@ __global__ void CoalescedRgb2GrayKernel(uchar* src, float* dst, unsigned length)
 		dst[idx_store] = gray;
 }
 
-/*	Function: createKernel1D
- * 	------------------------
+/*!	Function: createKernel1D.
+ * 
  * 	This function generates 1-dimensional gaussian kernels for preprocessing.
  */
 void createKernel1D(unsigned ksize, string type) {
@@ -241,8 +241,8 @@ void createKernel1D(unsigned ksize, string type) {
 	cudaMemcpyToSymbol("kernel", kern, sizeof(kern));
 }
 
-/*	Function: createCandidateKernel1D
- * 	---------------------------------
+/*!	Function: createCandidateKernel1D.
+ * 
  *	This function generates 1-dimensional gaussian kernels for candidate detection. 
  */
 void createCandidateKernel1D(unsigned ksize, string type) {
@@ -267,8 +267,8 @@ void createCandidateKernel1D(unsigned ksize, string type) {
 	cudaMemcpyToSymbol("kernel_wide", kern, sizeof(kern));
 }
 
-/*	Function: preProcessImage
- * 	-------------------------
+/*!	Function: preProcessImage.
+ * 
  * 	This function operates on an RGBA color image in the device. It will first launch a kernel to perform
  * 	RGBA to grayscale conversion (which also converts uchar4 to float). Then, a gaussian blur filter is
  * 	implemented using separation into horizontal and vertical passes. 
@@ -344,8 +344,8 @@ void preProcessImage(uchar3* src, float* tmpGray, float* tmpGauss, float* backgr
 	inputProcessed.normalized = false;
 }
 
-/*	Function: segmentAndAddToBackground
- * 	-----------------------------------
+/*!	Function: segmentAndAddToBackground.
+ * 
  * 	This function segments the current input image using the current background model and, afterwards,
  * 	updates the background model with the current image using the learning rate.
  * 
@@ -368,8 +368,8 @@ void segmentAndAddToBackground(float* segmented, float* background, unsigned wid
 	SegmentAndUpdateBackgroundKernel<<<dimGrid, dimBlock>>>(segmented, background, width, height, rate);
 }
 
-/*	Function: calculateLowLevelCandidates
- * 	-------------------------------------
+/*!	Function: calculateLowLevelCandidates.
+ * 
  * 	This function is the GPU implementation of low-level ball candidate generation.
  * 	First, a wide gaussian filtering of the binary background mask is performed, which is
  * 	followed by non-maximum suppression. Remaining pixels are reported as possible ball candidates.

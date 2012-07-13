@@ -79,14 +79,14 @@ void ProcessorThread::operator()() {
 // 		
 // 		fg.segment(*in, segmentedFrame, fglist);
 // 		std::cout << "Foreground list length: " << fglist.size() << std::endl;
-		/** WRAPPER CODE */
+		/* WRAPPER CODE */
 // 		if(bUseGPU) {
 // 			for(int y = 0; y < frame.rows; y++)
 // 				for(int x = 0; x < frame.cols; x++)
 // 					if(segmentedFrame.at<float>(y,x) == 255.0)
 // 						fglist.push_back(make_pair(x,y));		
 // 		}
-		/** WRAPPER CODE */
+		/* WRAPPER CODE */
 		
 // 		if(!firstFrame)
 // 			bd.searchBall(segmentedFrame, *in, fglist, algo);

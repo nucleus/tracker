@@ -22,17 +22,13 @@ BallDetection::BallDetection() {
 	tracking = false;
 	
 	currentInsertPosition = 0;
-	
-	framecnt = 0;
+
 	HALFTABLESIZE = 7; 
 	MINRADIUS = 3;
 	MAXRADIUS = 5;
 	IGNORERADIUS = 15;
-	
-	for(int i = 0; i < 53; i++)
-		for(int j = 0; j < 30; j++)
-			for(int k = 0; k < 8; k++)
-				grid[i][j][k] = NULL;
+
+	background = 0;
 };
 
 void BallDetection::setImageParams(unsigned int _width, unsigned int _height, unsigned int _channels) {
@@ -40,10 +36,29 @@ void BallDetection::setImageParams(unsigned int _width, unsigned int _height, un
 	iBgHeight = _height;
 	assert(_channels == 1);
 	iBgChannels = _channels;
+
+	//Create a picture to draw the history
 	path = Mat(iBgHeight, iBgWidth, CV_8UC3, Scalar(0.0)).clone();
+
+	//Create the grids and initialise all their entries with empty lists
+	candidategrid = new GridC(iBgWidth, iBgHeight);
+	pathgrid = new GridP(iBgWidth, iBgHeight);
+	for(int x=0; x<pathgrid->xcells; x++) {
+		for(int y=0; y<pathgrid->ycells; y++) {
+			candidategrid->SetEntry(x, y, new list<Candidate>());
+			pathgrid->SetEntry(x, y, new list<Path>());
+		}
+	}
+}
+
+void BallDetection::toggleBackground(void) {
+	//Switch the background by incrementing the variable and setting it back to zero when it reaches 3
+	background++;
+	background %= 3;
 }
 
 void BallDetection::searchBall(Mat& srcFrame, Mat& dstFrame, vector< pair<unsigned, unsigned>>& cForegroundList, uint32_t * candidates, detectionAlgorithm algo){
+	//Call an according function depending on the selected algorithm
 	switch(algo) {
 		case ALGO_MOVING:
 			locateBallMovingMask(srcFrame, dstFrame, cForegroundList);
@@ -55,7 +70,7 @@ void BallDetection::searchBall(Mat& srcFrame, Mat& dstFrame, vector< pair<unsign
 			locateBallOpticalFlow(srcFrame, dstFrame, cForegroundList);
 			break;
 		case ALGO_CIRCLES:
-			locateBallCircleBased(dstFrame, dstFrame, cForegroundList);
+			locateBallHistoryBased(dstFrame, dstFrame, cForegroundList);
 			break;
 		case ALGO_CANDIDATES:
 			locateBallCandidatesOld(srcFrame, dstFrame, candidates);
@@ -368,8 +383,6 @@ pair<unsigned, unsigned> BallDetection::guessCurrentPositionBasedOnOldPositions(
      * 
      * (b-a), (y-x)		newY = (y-x)/(b-a)*newX + lastPoint
      * newX = b+(b-a)
-     *	
-     * 
      * 
     */
       int nenner = y2-y1;
@@ -391,12 +404,14 @@ pair<unsigned, unsigned> BallDetection::guessCurrentPositionBasedOnOldPositions(
 }
 
 int BallDetection::searchpixelatdistancebycolor(Mat * image, int channel, int color, int x, int y, int * offsetx, int * offsety, int dist) {
+	//Start looking for the pixel at the offset
 	int xl = *offsetx;
 	int yl = *offsety;
 
 	int startx = *offsetx;
 	int starty = *offsety;
 
+	//If the offset and the center are equal then start at the top left corner
 	if((startx == x) && (starty == y)) {
 		xl = x - dist;
 		yl = y - dist;
@@ -405,6 +420,7 @@ int BallDetection::searchpixelatdistancebycolor(Mat * image, int channel, int co
 		yl = starty;
 	}
 
+	//If at the top left corner then search the pixel by moving right until you reach top right corner
 	if((xl < x) && (yl < y)) {
 		for(;xl<=(x+dist);xl++) {
 			if(!(yl >= 0 && yl < iBgHeight && xl < iBgWidth && xl >= 0)) break;
@@ -419,6 +435,7 @@ int BallDetection::searchpixelatdistancebycolor(Mat * image, int channel, int co
 		xl = x + dist;
 	}
 
+	//If at the top right corner then search the pixel by moving down until you reach bottom right corner
 	if((xl > x) && (yl < y)) {		
 		for(;yl<=(y+dist);yl++) {
 			if(!(yl >= 0 && yl < iBgHeight && xl < iBgWidth && xl >= 0)) break;
@@ -433,6 +450,7 @@ int BallDetection::searchpixelatdistancebycolor(Mat * image, int channel, int co
 		yl = y + dist;
 	}
 
+	//If at the bottom right corner then search the pixel by moving left until you reach botom left corner
 	if((xl > x) && (yl > y)) {
 		for(;xl>=(x-dist);xl--) {
 			if(!(yl >= 0 && yl < iBgHeight && xl < iBgWidth && xl >= 0)) break;
@@ -447,6 +465,7 @@ int BallDetection::searchpixelatdistancebycolor(Mat * image, int channel, int co
 		xl = x - dist;
 	}
 
+	//If at the botom left corner then search the pixel by moving up until you reach top left corner
 	if((xl < x) && (yl > y)) {
 		for(;yl>=(y-dist);yl--) {
 			if(!(yl >= 0 && yl < iBgHeight && xl < iBgWidth && xl >= 0)) break;
@@ -461,6 +480,7 @@ int BallDetection::searchpixelatdistancebycolor(Mat * image, int channel, int co
 		yl = y - dist;
 	}
 
+	//Nothing was found
 	return 0;
 }
 
@@ -469,66 +489,63 @@ int BallDetection::searchpixelatdistancebycolormeanresults(Mat * image, int chan
 	int yl;
 	int rescounter = 0;
 
+	//Start at the top left corner
 	xl = x - dist;
 	yl = y - dist;
 
 	*offsetx = 0;
 	*offsety = 0;
 
+	//If at the top left corner then search the pixel by moving right until you reach top right corner
 	if((xl < x) && (yl < y)) {
 		for(;xl<=(x+dist);xl++) {
 		  if(((yl > 0) && (xl > 0)) && ((yl < iBgHeight) && (xl < iBgWidth))){
 			if((*image).at<Vec3b>(yl, xl)[channel] == color) {
-				//if((startx != xl) || (starty != yl)) {
-					*offsetx += xl;
-					*offsety += yl;
-					rescounter++;
-				//}
+				*offsetx += xl;
+				*offsety += yl;
+				rescounter++;
 			}
 		  }
 		}
 		xl = x + dist;
 	}
 
+	//If at the top right corner then search the pixel by moving down until you reach bottom right corner
 	if((xl > x) && (yl < y)) {
 		for(;yl<=(y+dist);yl++) {
 		  if(((yl > 0) && (xl > 0)) && ((yl < iBgHeight) && (xl < iBgWidth))){
 			if((*image).at<Vec3b>(yl, xl)[channel] == color) {
-				//if((startx != xl) || (starty != yl)) {
-					*offsetx += xl;
-					*offsety += yl;
-					rescounter++;
-				//}
+				*offsetx += xl;
+				*offsety += yl;
+				rescounter++;
 			}
 		  }
 		}
 		yl = y + dist;
 	}
 
+	//If at the bottom right corner then search the pixel by moving left until you reach botom left corner
 	if((xl > x) && (yl > y)) {
 		for(;xl>=(x-dist);xl--) {
 		  if(((yl > 0) && (xl > 0)) && ((yl < iBgHeight) && (xl < iBgWidth))){
 			if((*image).at<Vec3b>(yl, xl)[channel] == color) {
-				//if((startx != xl) || (starty != yl)) {
-					*offsetx += xl;
-					*offsety += yl;
-					rescounter++;
-				//}
+				*offsetx += xl;
+				*offsety += yl;
+				rescounter++;
 			}
 		  }
 		}
 		xl = x - dist;
 	}
 
+	//If at the botom left corner then search the pixel by moving up until you reach top left corner
 	if((xl < x) && (yl > y)) {
 		for(;yl>=(y-dist);yl--) {
 		  if(((yl > 0) && (xl > 0)) && ((yl < iBgHeight) && (xl < iBgWidth))){
 			if((*image).at<Vec3b>(yl, xl)[channel] == color) {
-				//if((startx != xl) || (starty != yl)) {
-					*offsetx += xl;
-					*offsety += yl;
-					rescounter++;
-				//}
+				*offsetx += xl;
+				*offsety += yl;
+				rescounter++;
 			}
 		  }
 		}
@@ -536,8 +553,10 @@ int BallDetection::searchpixelatdistancebycolormeanresults(Mat * image, int chan
 	}
 
 	if(rescounter == 0) {
+		//If no pixels with matching color were found return zero
 		return 0;
 	} else {
+		//Otherwise set the offset coordinates to the mean coordinates of all detected pixels and return the amount of detected pixels
 		*offsetx /= rescounter;
 		*offsety /= rescounter;
 		return rescounter;
@@ -546,23 +565,23 @@ int BallDetection::searchpixelatdistancebycolormeanresults(Mat * image, int chan
 
 int BallDetection::countblackpixelsaroundatedge(Mat * image, int centerx, int centery, int halfsquaresize) {
 	int xl, yl;
-	int result;
+	int result=0;
+	//Go through all pixels in the square and increment the result on each dark pixel
 	for(xl=(centerx-halfsquaresize); xl<=(centerx+halfsquaresize); xl++) {
 		for(yl=(centery-halfsquaresize); yl<=(centery+halfsquaresize); yl++) {
 			if(((yl > 0) && (xl > 0)) && ((yl < iBgHeight) && (xl < iBgWidth))){
 			      if((*image).at<Vec3b>(yl, xl)[2] < 64) {
 				      result++;
-				      //(*image).at<Vec3b>(yl, xl) = {0, 255, 0};
 			      }
 			}
 		}
 	}
+	//Go through all pixels in a square with a with and height less by two pixels compared to the previous square and decrement the result on each dark pixel
 	for(xl=(centerx-halfsquaresize+1); xl<=(centerx+halfsquaresize-1); xl++) {
 		for(yl=(centery-halfsquaresize+1); yl<=(centery+halfsquaresize-1); yl++) {
 			if(((yl > 0) && (xl > 0)) && ((yl < iBgHeight) && (xl < iBgWidth))){
 			      if((*image).at<Vec3b>(yl, xl)[2] < 64) {
 				      result--;
-				      //(*image).at<Vec3b>(yl, xl) = {255, 0, 0};
 			      }
 			}
 		}
@@ -574,6 +593,8 @@ void BallDetection::locateBallMovingMask(Mat& srcFrame, Mat& dstFrame, vector< p
 	int table[HALFTABLESIZE*2+1][HALFTABLESIZE*2+1];
 	
 	int x, y;
+
+	//Calculate all entries of the mask
 	for(x = -HALFTABLESIZE; x <= HALFTABLESIZE; x++) {
 		for(y = -HALFTABLESIZE; y <= HALFTABLESIZE; y++) {
 			if(((int)sqrt((double)(x*x+y*y))) <= MINRADIUS)
@@ -587,6 +608,7 @@ void BallDetection::locateBallMovingMask(Mat& srcFrame, Mat& dstFrame, vector< p
 		}
 	}  
   
+	//Draw cocentric circles represening the mask
 	Point center2(50, 50);
 	circle(dstFrame, center2, MINRADIUS, Scalar(255,0,0), 1,8,0);
 	circle(dstFrame, center2, MAXRADIUS, Scalar(0,0,255), 1,8,0);
@@ -602,25 +624,26 @@ void BallDetection::locateBallMovingMask(Mat& srcFrame, Mat& dstFrame, vector< p
 	int maxchainendy;
 	Mat blackNWhiteImage;
 
-	Mat pcopy(iBgHeight, iBgWidth, CV_8UC3, Scalar(0.0));
+	//Covert the input image to grayscale and copy all the resulting pixels which have their coordinates listed inside the vector to the foreground image
 	cvtColor(dstFrame, blackNWhiteImage, CV_RGB2GRAY);
 	Mat foreground(iBgHeight, iBgWidth, CV_8UC1, Scalar(0.0));
-
 	for(vector< pair<unsigned,unsigned> >::const_iterator it = cForegroundList.begin(); it != cForegroundList.end(); ++it) {
 		x = (*it).first;
 		y = (*it).second;
 		foreground.at<uchar>(y, x) = blackNWhiteImage.at<uchar>(y, x);
 	}
 
+	//Decrement the intensity of the pixels in the history image
 	for(x = 0; x < iBgWidth; x++) {
 		for(y = 0; y < iBgHeight; y++) {
 			if(path.at<Vec3b>(y, x)[2] > 0)
 				path.at<Vec3b>(y, x)[2]--;
-			else
-				path.at<Vec3b>(y, x)[2]=0;
+			/*else
+				path.at<Vec3b>(y, x)[2]=0;*/
 		}
 	}
 
+	//Go through the new foreground pixels again check the pixels around the listet coordinates
 	for(vector< pair<unsigned,unsigned> >::const_iterator it = cForegroundList.begin(); it != cForegroundList.end(); ++it) {
 		x = (*it).first;
 		y = (*it).second;
@@ -631,28 +654,37 @@ void BallDetection::locateBallMovingMask(Mat& srcFrame, Mat& dstFrame, vector< p
 			for(yl = -HALFTABLESIZE; yl <= HALFTABLESIZE; yl++) {
 				pixel = foreground.at<uchar>(y+yl, x+xl);
 				if((table[xl+HALFTABLESIZE][yl+HALFTABLESIZE] == 1) && (pixel > HTHRESHOLD)) {
-					counter++;
+					counter++; //Increment the counter by one for each bright pixel which is supposed to be bright
 				} else if((table[xl+HALFTABLESIZE][yl+HALFTABLESIZE] == -1) && (pixel > LTHRESHOLD)) {
-					counter-=1024;
+					counter-=1024; //Decrement the counter by 1024 for each bright pixel which is not supposed to be bright
 				}
 			}
 		}
+		//If the counter is over a threshold of 5 mark the pixel in the history as a possible center of the ball with bright red
 		if(counter > 5) {
 			path.at<Vec3b>(y, x) = {0, 0, 255};
 		}
 	}
 
-	pcopy = path.clone();
-	dstFrame = path.clone();
+	//Copy the backround to the output imagedepending on what has been selected
+	if(background == 0) {
+		dstFrame = path.clone();
+	} else if (background == 1) {
+		dstFrame = srcFrame.clone();
+		return;
+	}
 
+	//Go through all new foreground pixels again and try to find moving objects there by using the history
 	for(vector< pair<unsigned,unsigned> >::const_iterator it = cForegroundList.begin(); it != cForegroundList.end(); ++it) {
+		//Start the search at the position of the new foreground pixel
 		x = (*it).first;
 		y = (*it).second;
+		//The color we are looking for will be decremented with each new step
+		//Maximum amout of steps: 250 (the remaining color is almost black)
 		for(chainlength = 0; chainlength < 250; chainlength++) {
-
-			/*printf("chain is at %d %d \n", x, y);
-			fflush(stdout);*/
-
+			//Search for pixels with the next color around the current position
+			//Begin with a radius of 1 pixel and increment the radius after each unsuccessful uttempt until the pixel is found
+			//Or the limit for the radius length is reached
 			for(dist = 1; dist < (IGNORERADIUS); dist++) {
 				xl = x;
 				yl = y;
@@ -660,9 +692,9 @@ void BallDetection::locateBallMovingMask(Mat& srcFrame, Mat& dstFrame, vector< p
 					break;
 				}
 			}
-			if(dist == (IGNORERADIUS)) {
+			if(dist == (IGNORERADIUS)) { //If the limit was reached then end the chain
 				break;
-			} else {
+			} else { //Otherwise draw a blue line from the previous pixel to the current pixel
 				Point start(x, y);
 				x = xl;
 				y = yl;
@@ -670,6 +702,9 @@ void BallDetection::locateBallMovingMask(Mat& srcFrame, Mat& dstFrame, vector< p
 				line(dstFrame, start, end, Scalar(255,30*(chainlength%6),0));
 			}
 		}
+		//The chain of steps for the current new forground pixel ends here
+		//If the amount of steps of the current chain ist bigger than the amount of steps in the biggest chain so far
+		//Then concider the current chain as the chain with maximum length
 		if(chainlength > maxchainlength) {
 			maxchainlength = chainlength;
 			maxchainstartx = (*it).first;
@@ -678,6 +713,7 @@ void BallDetection::locateBallMovingMask(Mat& srcFrame, Mat& dstFrame, vector< p
 			maxchainendy = y;
 		}
 	}
+	//If there chain with the maximum length is longer than 6 steps then draw a white circle where it begins
 	if(maxchainlength > 6) {
 		Point start(maxchainstartx, maxchainstarty);
 		circle(dstFrame, start, IGNORERADIUS, Scalar(255,255,255), 1,8,0);
@@ -685,7 +721,9 @@ void BallDetection::locateBallMovingMask(Mat& srcFrame, Mat& dstFrame, vector< p
 	return;
 }
 
-void BallDetection::locateBallCircleBased(Mat& srcFrame, Mat& dstFrame, vector< pair<unsigned, unsigned>> & cForegroundList) {
+void BallDetection::locateBallHistoryBased(Mat& srcFrame, Mat& dstFrame, vector< pair<unsigned, unsigned>> & cForegroundList) {
+
+	//Draw cocentric circles represening the mask
 	Point center2(50, 50);
 	circle(dstFrame, center2, MINRADIUS, Scalar(255,0,0), 1,8,0);
 	circle(dstFrame, center2, MAXRADIUS, Scalar(0,0,255), 1,8,0);
@@ -707,9 +745,9 @@ void BallDetection::locateBallCircleBased(Mat& srcFrame, Mat& dstFrame, vector< 
 	int endstartlength;
 	Mat blackNWhiteImage;
 
-	Mat pcopy(iBgHeight, iBgWidth, CV_8UC3, Scalar(0.0));
 	cvtColor(srcFrame, blackNWhiteImage, CV_RGB2GRAY);
 
+	//Decrement the intensity of the pixels in the history image
 	for(x = 0; x < iBgWidth; x++) {
 		for(y = 0; y < iBgHeight; y++) {
 			if(path.at<Vec3b>(y, x)[2] > 0)
@@ -719,29 +757,39 @@ void BallDetection::locateBallCircleBased(Mat& srcFrame, Mat& dstFrame, vector< 
 		}
 	}
 
-
+	//Mark the new forground pixels in the history with bright red
 	for(vector< pair<unsigned,unsigned> >::const_iterator it = cForegroundList.begin(); it != cForegroundList.end(); ++it) {
 		x = (*it).first;
 		y = (*it).second;
 		path.at<Vec3b>(y, x) = {0, 0, 255};
 	}
 
-	dstFrame = path.clone();
+	//Copy the backround to the output image depending on what has been selected
+	if(background == 0) {
+		dstFrame = path.clone();
+	} else if (background == 1) {
+		dstFrame = srcFrame.clone();
+		return;
+	}
 	
 	int xCounter = 0;
 	int yCounter = 0;
 	int amountOfCandidates = 0;
 
+	//Go through the new foreground pixels again and try to find moving objects there by using the history
 	for(vector< pair<unsigned,unsigned> >::const_iterator it = cForegroundList.begin(); it != cForegroundList.end(); ++it) {
+		//Start the search at the position of the new foreground pixel
 		x = (*it).first;
 		y = (*it).second;
 		startx = (*it).first;
 		starty = (*it).second;
+		//The color we are looking for will be decremented with each new step
+		//Maximum amout of steps: 250 (the remaining color is almost black)
 		for(chainlength = 0; chainlength < 250; chainlength++) {
 
-			/*printf("chain is at %d %d \n", x, y);
-			fflush(stdout);*/
-
+			//Search for pixels with the next color around the current position
+			//Begin with a radius of 1 pixel and increment the radius after each unsuccessful uttempt until the pixel is found
+			//Or the limit for the radius length is reached
 			for(dist = 1; dist < MAXSTEPDISTANCE; dist++) {
 				xl = x;
 				yl = y;
@@ -750,15 +798,16 @@ void BallDetection::locateBallCircleBased(Mat& srcFrame, Mat& dstFrame, vector< 
 					break;
 				}
 			}
+			//If more than 16 pixels were found then end the chain
 			if(foundcnt > 16) {
 				break;
 			}
-			if(countblackpixelsaroundatedge(&path, xl, yl, 10) < 60) {
+			if(countblackpixelsaroundatedge(&path, xl, yl, 10) < 60) { //If there are less than 60 dark pixels in the boarder of a square with a side length of 20 around the current pixel then end the chain
 				break;
 			}
-			if((dist == MAXSTEPDISTANCE)/*||(dist == 1)*/) {
+			if((dist == MAXSTEPDISTANCE)/*||(dist == 1)*/) { //If the limit was reached then end the chain
 				break;
-			} else {
+			} else { //Otherwise draw a blue line from the previous pixel to the current pixel
 				Point start(x, y);
 				x = xl;
 				y = yl;
@@ -769,13 +818,15 @@ void BallDetection::locateBallCircleBased(Mat& srcFrame, Mat& dstFrame, vector< 
 		endx = x;
 		endy = y;
 
+		//If the chain has less steps then a sertain threshold then do not concider it as the path of the ball
 		if(chainlength >= MINCHAINLENGTH) {
+			//Also check the distance between the starting and ending pixels of the chain
 			endstartlength = vectlength(startx-endx, starty-endy);
-			if(endstartlength >= MINSTARTENDDISTANCE) {
+			if(endstartlength >= MINSTARTENDDISTANCE) { //Sum up the coordinates of all possible locations of the ball
 					xCounter += startx;
 					yCounter += starty;
 					amountOfCandidates++;
-			} else {
+			} else { //If the chain is not long enough then draw a yellow line from its first pixel to its last pixel
 				Point start2(startx, starty);
 				Point end2(endx, endy);
 				line(dstFrame, start2, end2, Scalar(0,255,255));
@@ -783,7 +834,7 @@ void BallDetection::locateBallCircleBased(Mat& srcFrame, Mat& dstFrame, vector< 
 		}
 	}
 	
-	if(amountOfCandidates!=0){
+	if(amountOfCandidates!=0){ //If some possible ball locations were found then calculate the mean coordinates and draw a grren circle there
 	    xCounter/=amountOfCandidates;
 	    yCounter/=amountOfCandidates;
 	    Point start(xCounter, yCounter);
@@ -796,25 +847,9 @@ void BallDetection::locateBallCircleBased(Mat& srcFrame, Mat& dstFrame, vector< 
 }
 
 void BallDetection::locateBallCandidatesOld(Mat& srcFrame, Mat& dstFrame, uint32_t * candidates) {
-//	int table[HALFTABLESIZE*2+1][HALFTABLESIZE*2+1];
-	
 	int x, y;
 
-/*
-	for(x = -HALFTABLESIZE; x <= HALFTABLESIZE; x++) {
-		for(y = -HALFTABLESIZE; y <= HALFTABLESIZE; y++) {
-			if(((int)sqrt((double)(x*x+y*y))) <= MINRADIUS)
-				table[x+HALFTABLESIZE][y+HALFTABLESIZE] = 1;
-			else if(((int)sqrt((double)(x*x+y*y))) > IGNORERADIUS)
-				table[x+HALFTABLESIZE][y+HALFTABLESIZE] = 0;
-			else if(((int)sqrt((double)(x*x+y*y))) > MAXRADIUS)
-				table[x+HALFTABLESIZE][y+HALFTABLESIZE] = -1;
-			else
-				table[x+HALFTABLESIZE][y+HALFTABLESIZE] = 0;
-		}
-	}  
-*/
-
+	//Draw cocentric circles represening the mask
 	Point center2(50, 50);
 	circle(dstFrame, center2, MINRADIUS, Scalar(255,0,0), 1,8,0);
 	circle(dstFrame, center2, MAXRADIUS, Scalar(0,0,255), 1,8,0);
@@ -830,15 +865,10 @@ void BallDetection::locateBallCandidatesOld(Mat& srcFrame, Mat& dstFrame, uint32
 	int maxchainendy;
 	Mat blackNWhiteImage;
 
-	Mat pcopy(iBgHeight, iBgWidth, CV_8UC3, Scalar(0.0));
+	//Covert the input image to grayscale and copy all the resulting pixels which have their coordinates listed inside the array to the foreground image
 	cvtColor(dstFrame, blackNWhiteImage, CV_RGB2GRAY);
 	Mat foreground(iBgHeight, iBgWidth, CV_8UC1, Scalar(0.0));
-
-
-
-
 	int i;
-
 	for(i = 1; i < candidates[0]; i++) {
 		x = UNPACKHI32(candidates[i]);
 		y = UNPACKLO32(candidates[i]);
@@ -847,57 +877,50 @@ void BallDetection::locateBallCandidatesOld(Mat& srcFrame, Mat& dstFrame, uint32
 		foreground.at<uchar>(y, x) = blackNWhiteImage.at<uchar>(y, x);
 	}
 
+	//Decrement the intensity of the pixels in the history image
 	for(x = 0; x < iBgWidth; x++) {
 		for(y = 0; y < iBgHeight; y++) {
 			if(path.at<Vec3b>(y, x)[2] > 0)
 				path.at<Vec3b>(y, x)[2]--;
-			else
-				path.at<Vec3b>(y, x)[2]=0;
 		}
 	}
 
 
 
 
-
+	//Mark the new candidates in the history with bright red
 	for(i = 1; i < candidates[0]; i++) {
 		x = UNPACKHI32(candidates[i]);
 		y = UNPACKLO32(candidates[i]);
 		if(x == 0 && y == 0)
 			break;
-
-
 		counter = 0;
+		path.at<Vec3b>(y, x) = {0, 0, 255};
 
-/*		for(xl = -HALFTABLESIZE; xl <= HALFTABLESIZE; xl++) {
-			for(yl = -HALFTABLESIZE; yl <= HALFTABLESIZE; yl++) {
-				pixel = foreground.at<uchar>(y+yl, x+xl);
-				if((table[xl+HALFTABLESIZE][yl+HALFTABLESIZE] == 1) && (pixel > HTHRESHOLD)) {
-					counter++;
-				} else if((table[xl+HALFTABLESIZE][yl+HALFTABLESIZE] == -1) && (pixel > LTHRESHOLD)) {
-					counter-=1024;
-				}
-			}
-		}
-		if(counter > 5) {*/
-			path.at<Vec3b>(y, x) = {0, 0, 255};
-		//}
 	}
 
-	pcopy = path.clone();
-	dstFrame = path.clone();
+	//Copy the backround to the output image depending on what has been selected
+	if(background == 0) {
+		dstFrame = path.clone();
+	} else if (background == 1) {
+		dstFrame = srcFrame.clone();
+		return;
+	}
 
+
+	//Go through the new candidates again and try to find moving objects there by using the history
 	for(i = 1; i < candidates[0]; i++) {
 		x = UNPACKHI32(candidates[i]);
 		y = UNPACKLO32(candidates[i]);
 		if(x == 0 && y == 0)
 			break;
 
+		//The color we are looking for will be decremented with each new step
+		//Maximum amout of steps: 10
 		for(chainlength = 0; chainlength < 10; chainlength++) {
-
-			/*printf("chain is at %d %d \n", x, y);
-			fflush(stdout);*/
-
+			//Search for pixels with the next color around the current position
+			//Begin with a radius of 2 pixel and increment the radius after each unsuccessful uttempt until the pixel is found
+			//Or the limit for the radius length is reached
 			for(dist = 2; dist < (IGNORERADIUS); dist++) {
 				xl = x;
 				yl = y;
@@ -905,9 +928,9 @@ void BallDetection::locateBallCandidatesOld(Mat& srcFrame, Mat& dstFrame, uint32
 					break;
 				}
 			}
-			if(dist == (IGNORERADIUS)) {
+			if(dist == (IGNORERADIUS)) { //If the distance limit is reached then end the chain
 				break;
-			} else {
+			} else { //Otherwise draw a blue line from the previous pixel to the current pixel
 				Point start(x, y);
 				x = xl;
 				y = yl;
@@ -915,267 +938,362 @@ void BallDetection::locateBallCandidatesOld(Mat& srcFrame, Mat& dstFrame, uint32
 				line(dstFrame, start, end, Scalar(255,30*(chainlength%6),0));
 			}
 		}
-		/*if(chainlength > maxchainlength) {
-			maxchainlength = chainlength;
-			maxchainstartx = UNPACKHI32(candidates[i]);
-			maxchainstarty = UNPACKLO32(candidates[i]);
-			maxchainendx = x;
-			maxchainendy = y;
-		}*/
+
+		//If there chain is not longer than 6 steps then do not concider it als a possible path of the ball
 		if(chainlength > 6) {
 			Point start2(UNPACKHI32(candidates[i]), UNPACKLO32(candidates[i]));
 			Point end2(x, y);
-			if(diffabs(UNPACKHI32(candidates[i]), UNPACKLO32(candidates[i]), x, y) > 8) {
+			//Check the distance between the start of the chain and the end of the chain
+			if(diffabs(UNPACKHI32(candidates[i]), UNPACKLO32(candidates[i]), x, y) > 64) { //If the distance is longer then 8 pixels concider it as the path of the ball
+				//Draw a green line form the start of the chain to the end of the chain
 				line(dstFrame, start2, end2, Scalar(0,255,0));
+				//Mark the location of the ball with a yellow circle
 				circle(dstFrame, start2, IGNORERADIUS, Scalar(0,255,255), 1,8,0);
-			} else {
+			} else { //If the distance is not then 8 pixels do not concider it as the path of the ball
+				//Draw a purple line form the start of the chain to the end of the chain
 				line(dstFrame, start2, end2, Scalar(255,0,255));
 			}
 		}
 	}
-	/*if(maxchainlength > 6) {
-		Point start(maxchainstartx, maxchainstarty);
-		circle(dstFrame, start, IGNORERADIUS, Scalar(255,255,255), 1,8,0);
-	}*/	
 	return;
 }
 
-void BallDetection::grid_init(void) {
-	int x, y, t;
-	for(x=0; x<53; x++) {
-		for(y=0; y<30; y++) {
-			for(t=0; t<8; t++) {
-				grid[x][y][t] = NULL;
-			}
-		}
-	}
-	/*for(x=-7; x<=7; x++) {
-		for(y=-7; y<=7; y++) {
-			if(((int)sqrt((double)(x*x+y*y))) > 8)
-				mask[x+7][y+7] = 0;
-			else if(((int)sqrt((double)(x*x+y*y))) < 2)
-				mask[x+7][y+7] = 0;
-			else
-				mask[x+7][y+7] = 1;
-			printf("%d", mask[x+7][y+7]);
-		}
-		printf("\n");
-	}*/
-}
 
-void BallDetection::cleargridcell(int x, int y, int t) {
-	listelement * pntrcurrent;
-	listelement * pntrnext;
-	pntrcurrent = grid[x][y][t];
-	grid[x][y][t] = NULL;
-	while(pntrcurrent != NULL) {
-		pntrnext = pntrcurrent->next;
-		free(pntrcurrent);
-		pntrcurrent = pntrnext;
-	}
-}
-
-void BallDetection::cleargridlayer(int t) {
+void BallDetection::clearcandidategrid(void) {
+	//Clear all cells of the candidate grid
 	int x, y;
-	for(x=0; x<53; x++) {
-		for(y=0; y<30; y++) {
-			cleargridcell(x, y, t);
+	for(x=0; x<candidategrid->xcells; x++) {
+		for(y=0; y<candidategrid->ycells; y++) {
+			candidategrid->GetEntry(x, y)->clear();
 		}
 	}
 }
 
-void BallDetection::putcandidatestogrid(uint32_t * candidates, int t) {
+void BallDetection::putcandidatestogrid(uint32_t * candidates) {
 	int x, y;
 	int i;
-	listelement * newelement;
-	listelement ** cellentry;
-	for(i = 1; i < candidates[0]; i++) {
+	//Go through all new candidates inside the array and put them to the according grid cell if they are not out of range
+	for(i = 1; i < (candidates[0]); i++) {
 		x = UNPACKHI32(candidates[i]);
 		y = UNPACKLO32(candidates[i]);
-		if((x == 0 && y == 0) || ((x >= 848) || (y >= 480))) {
+		if(((x == 0) && (y == 0)) || ((x >= iBgWidth) || (y >= iBgHeight))) {
 			break;
 		} else {
-			cellentry = &grid[x/16][y/16][t];
-			newelement = (listelement *)malloc(sizeof(listelement));
-			newelement->x = x;
-			newelement->y = y;
-			newelement->t = t;
-			newelement->chainlength = 0;
-			newelement->chainendx = x;
-			newelement->chainendy = y;
-			newelement->closestfromnextlayer = NULL;
-			newelement->next = *cellentry;
-			*cellentry = newelement;
+			candidategrid->GetEntry(x/GRID_CELLSIZE, y/GRID_CELLSIZE)->push_front(Candidate(x, y));
+
 		}
 	}
 }
 
-void BallDetection::connecttoclosestfromprevlayer(listelement * thiselement) {
-	listelement * bestsofar = NULL;
-	float bestdist = 16; //acceptable distance always less than 16
-	listelement * current;
+void BallDetection::insertclosestcandidate(Path * p, int minradius, int maxradius) {
+	Candidate * bestsofar = NULL;
+	float bestdist = 1000000.0;
+	Candidate * current;
 	float currentdist;
-	int x = thiselement->x;
-	int y = thiselement->y;
-	int gridx = x/16;
-	int gridy = y/16;
-	int celloffsetx = x%16;
-	int celloffsety = y%16;
-	listelement * liststobrowse[4] = {NULL, NULL, NULL, NULL};
-	int prevlayer = ((thiselement->t)+(8-1))%8;
-	int gridoffsety;
-	int gridoffsetx;
-	int listcnt;
+	int thiscellx = p->FrontCandidate().x/GRID_CELLSIZE;
+	int thiscelly = p->FrontCandidate().y/GRID_CELLSIZE;
+	int othercellsx;
+	int othercellsy;
+	list<Candidate> * candidatelist;
+	list<Candidate>::iterator it;
 
-	//Reject all candidates at the image boarder
-	if(((gridx == 0) || (gridx == 52)) || ((gridy == 0) || (gridy == 29)))
-		return;
+	//Calculate the range of the cells around the current cell we will have to check depending on the maximal distance
+	int cellsizesaroundtocheck = (maxradius/GRID_CELLSIZE)+1;
 
-	if(celloffsetx <= 7) {
-		gridoffsetx = -1;
-	} else {
-		gridoffsetx = 1;
-	}
-
-	if(celloffsety <= 7) {
-		gridoffsety = -1;
-	} else {
-		gridoffsety = 1;
-	}
-
-	liststobrowse[0] = grid[gridx][gridy][prevlayer];
-	liststobrowse[1] = grid[gridx][gridy+gridoffsety][prevlayer];
-	liststobrowse[2] = grid[gridx+gridoffsetx][gridy][prevlayer];
-	liststobrowse[3] = grid[gridx+gridoffsetx][gridy+gridoffsety][prevlayer];
-
-	for(listcnt=0; listcnt<4; listcnt++) {
-		current = liststobrowse[listcnt];
-		while(current != NULL) {
-			currentdist = diffabs(current->x, current->y, x, y);
-			if((currentdist < bestdist)&&(currentdist >= 2)) {
-				bestdist = currentdist;
-				bestsofar = current;
-			}
-			current = current->next;
-		}
-	}
-
-	if(bestsofar != NULL) {
-		thiselement->closestfromnextlayer = bestsofar;
-		thiselement->chainlength = (bestsofar->chainlength) + 1;
-		thiselement->chainendx = bestsofar->chainendx;
-		thiselement->chainendy = bestsofar->chainendy;
-	}
-}
-
-void BallDetection::connectallatcurrentlayer(int t) {
-	listelement * current;
-	int x, y;
-	for(x=0; x<53; x++) {
-		for(y=0; y<30; y++) {
-			current = grid[x][y][t];
-			while(current != NULL) {
-				connecttoclosestfromprevlayer(current);
-				current = current->next;
-			}
-		}
-	}
-}
-
-listelement * BallDetection::longestchainstart(int t) {
-	listelement * current;
-	listelement * bestsofar = NULL;
-	int biggestlength = 0;
-	int x, y;
-	for(x=0; x<53; x++) {
-		for(y=0; y<30; y++) {
-			current = grid[x][y][t];
-			while(current != NULL) {
-				if((current->chainlength) > biggestlength) {
-					biggestlength = current->chainlength;
-					bestsofar = current;
+	//Go through all cells which migh contain the required candidates
+	for(othercellsx = thiscellx - cellsizesaroundtocheck; othercellsx <= thiscellx + cellsizesaroundtocheck; othercellsx++) {
+		for(othercellsy = thiscelly - cellsizesaroundtocheck; othercellsy <= thiscelly + cellsizesaroundtocheck; othercellsy++) {
+			candidatelist = candidategrid->GetEntry(othercellsx, othercellsy);
+			//If the cell exists (we are not out of range of the grid) then go through all elements of the list of the entry
+			if(candidatelist != NULL) {
+				for (it=candidatelist->begin(); it!=candidatelist->end(); it++) {
+					current = &(*it);
+					//Calculate the distance between the start of the current path and the current candidate
+					currentdist = diffabs(current->x, current->y, p->FrontCandidate().x, p->FrontCandidate().y);
+					//Do not allow the creation of new paths beginning by using the candidates which are to close to the beginning of the current path
+					if(currentdist <= maxradius*maxradius){
+					      current->cantStartANewPath = true;
+					}
+					//If the candidate is closer then the closest candidate so far then concider is as the new closest candidate
+					if((currentdist < bestdist)&&((currentdist >= minradius*minradius)&&(currentdist <= maxradius*maxradius))) {
+						bestdist = currentdist;
+						bestsofar = current;
+					}
 				}
-				current = current->next;
 			}
 		}
 	}
-	return bestsofar;
+
+	if(bestsofar == NULL) { //If no new candidates were found in the range then insert the prediced candidate instead
+		
+		p->insertPredictionCandidate();
+	} else { //If a candidate was found then insert its copy into the current path, mark the path as updated to inhibit its removal		
+		p->InsertCandidate(*bestsofar);
+		//Also count the amount of paths this candidate was inserted into
+		bestsofar->pathcnt++;
+	}
 }
 
+void BallDetection::insertclosestcandidateinallpaths(int minradius, int maxradius) {
+	int x, y;
+	list<Path>::iterator it;
+	list<Path> * l;
+	Path * current;
+	int amountOfPaths = 0;
+
+	//Go through all entries of the path grid
+	for(x=0; x<pathgrid->xcells; x++) {
+		for(y=0; y<pathgrid->ycells; y++) {
+			//Go through all elements of the list of the entry and try to connect thiese paths with new candidates
+			l = pathgrid->GetEntry(x, y);
+			for (it=l->begin(); it!=l->end(); it++) {
+				current = &(*it);
+				insertclosestcandidate(current, minradius, maxradius);
+			}
+			amountOfPaths += l->size();
+		}
+	}
+	
+
+}
+
+void BallDetection::insertnewpath(Candidate start) {
+	//Insert a new path with a single element to the list of the according grid cell
+	//Mark the path accordingly to prevent its removal during the rest of the frame
+	int thiscellx = start.x/GRID_CELLSIZE;
+	int thiscelly = start.y/GRID_CELLSIZE;
+	
+	pathgrid->GetEntry(thiscellx, thiscelly)->push_front(Path(start));
+	pathgrid->GetEntry(thiscellx, thiscelly)->front().inhibitremoval = true;
+}
+
+void BallDetection::createnewpathsfromremainingcandidates(void) {
+	int x, y;
+	list<Candidate>::iterator it;
+	list<Candidate> * l;
+	Candidate current;
+
+	//Go through all entries of the candidate grid
+	for(x=0; x<candidategrid->xcells; x++){
+		for(y=0; y<candidategrid->ycells; y++) {
+			//Go through all elements of the list of the entry and start a new path from all unconnected candidates
+			//There are some exceptions which were marked accordingly
+			l = candidategrid->GetEntry(x, y);
+			for (it=l->begin(); it!=l->end(); it++) {
+				current = (*it);
+				if(current.cantStartANewPath == false) {
+					insertnewpath(current);
+				}
+			}
+		}
+	}
+}
+
+#if 0
+void BallDetection::insertinclosestpath(Candidate c, int minradius, int maxradius) {
+	Path * bestsofar = NULL;
+	float bestdist = 1000000.0;
+	Path * current;
+	float currentdist;
+	int thiscellx = c.x/GRID_CELLSIZE;
+	int thiscelly = c.y/GRID_CELLSIZE;
+	int othercellsx;
+	int othercellsy;
+	list<Path> * pathlist;
+	list<Path>::iterator it;
+
+
+
+	int cellsizesaroundtocheck = (maxradius/GRID_CELLSIZE)+1;
+
+	for(othercellsx = thiscellx - cellsizesaroundtocheck; othercellsx <= thiscellx + cellsizesaroundtocheck; othercellsx++) {
+		for(othercellsy = thiscelly - cellsizesaroundtocheck; othercellsy <= thiscelly + cellsizesaroundtocheck; othercellsy++) {
+			pathlist = pathgrid->GetEntry(othercellsx, othercellsy);
+			if(pathlist != NULL) {
+				for (it=pathlist->begin(); it!=pathlist->end(); it++) {
+					current = &(*it);
+					currentdist = diffabs(current->FrontCandidate().x, current->FrontCandidate().y, c.x, c.y);
+					if((currentdist < bestdist)&&((currentdist >= minradius)&&(currentdist <= maxradius))) {
+						bestdist = currentdist;
+						bestsofar = current;
+					}
+				}
+			}
+		}
+	}
+
+	if(bestsofar == NULL) {
+		bestsofar = new Path();
+		pathgrid->GetEntry(thiscellx, thiscelly)->push_front(*bestsofar);
+		delete(bestsofar);
+		bestsofar = &pathgrid->GetEntry(thiscellx, thiscelly)->front();
+	}
+	bestsofar->InsertCandidate(c);
+	bestsofar->inhibitremoval = true;
+
+
+}
+
+void BallDetection::insertallinclosestpath(int minradius, int maxradius) {
+	int x, y;
+	list<Candidate>::iterator it;
+	list<Candidate> * l;
+	Candidate current;
+
+	for(x=0; x<candidategrid->xcells; x++) {
+		for(y=0; y<candidategrid->ycells; y++) {
+			l = candidategrid->GetEntry(x, y);
+			for (it=l->begin(); it!=l->end(); it++) {
+				current = (*it);
+				insertinclosestpath(current, minradius, maxradius);
+			}
+		}
+	}
+
+}
+#endif
+
+void BallDetection::removeorrelocatepaths(void) {
+	int x, y;
+
+	list<Path>::iterator it;
+	list<Path> * l;
+	//Path currentpath(Candidate(0,0));
+
+	//Go through all entries of the path grid
+	for(x=0; x<pathgrid->xcells; x++) {
+		for(y=0; y<pathgrid->ycells; y++) {
+			l = pathgrid->GetEntry(x, y);
+			//Go through all elements of the list of the entry
+			for (it=l->begin(); it!=l->end();) {
+				//Remove the path from the list if it is not a new path and there was no new new candidte attached to it
+				//Also remove the path if last attached candidate is out of the range of the frame
+				int tempX = (*it).FrontCandidate().x;
+				int tempY = (*it).FrontCandidate().y;
+				if((*it).inhibitremoval == false || tempX < 0 || tempY < 0 || tempX > iBgWidth || tempY > iBgHeight) {
+					it=l->erase(it);
+					if(it == l->end())
+						break;
+				}else{
+				   it++;
+				}
+			}
+		}
+	}
+
+	//Go through all entries of the path grid
+	for(x=0; x<pathgrid->xcells; x++) {
+		for(y=0; y<pathgrid->ycells; y++) {
+			l = pathgrid->GetEntry(x, y);
+			//Go through all elements of the list of the entry
+			for (it=l->begin(); it!=l->end(); it++) {
+				//Check the coordinates of all new candidates inserted into the paths and relocate the paths if the coordinates are out of range of the grid cell
+				Path currentpath = (*it);
+				int tempX = currentpath.FrontCandidate().x;
+				int tempY = currentpath.FrontCandidate().y;
+				if(((tempX)/GRID_CELLSIZE != x) || ((tempY)/GRID_CELLSIZE != y)) {
+				      if(tempX > 0 && tempY > 0 && tempX < iBgWidth && tempY < iBgHeight) {
+					    pathgrid->GetEntry(currentpath.FrontCandidate().x/GRID_CELLSIZE, currentpath.FrontCandidate().y/GRID_CELLSIZE)->push_front(*it);
+					    it=l->erase(it);
+					    if(it == l->end())
+						    break;
+				      }
+					
+				}
+				  
+			}
+		}
+	}	
+}
+
+void BallDetection::removepathswithsamestart(void) {
+	int x, y;
+	int cx, cy;
+	list<Candidate>::iterator cit;
+	list<Candidate> * cl;
+	list<Path>::iterator pit;
+	list<Path> * pl;
+
+	//Go through all entries of the candidate grid
+	for(x=0; x<candidategrid->xcells; x++) {
+		for(y=0; y<candidategrid->ycells; y++) {
+			cl = candidategrid->GetEntry(x, y);
+			//Go through all elements of the list of the entry
+			for (cit=cl->begin(); cit!=cl->end(); cit++) {
+				//If the amount of paths starting at the same candidate is over a certain threshold then remove all thiese paths from the path grid
+				if(cit->pathcnt > MAXPATHSWITHSAMESTART) {
+					cx = cit->x;
+					cy = cit->y;				  
+					pl = pathgrid->GetEntry(x, y);
+					for (pit=pl->begin(); pit!=pl->end(); pit++) {
+						if((pit->FrontCandidate().x == cx) && (pit->FrontCandidate().y == cy)){
+							pit=pl->erase(pit);
+							if(pit == pl->end())
+								break;
+						}
+					}
+				}
+			}
+		}
+	}
+}
+  
 void BallDetection::locateBallCandidatesNew(Mat& srcFrame, Mat& dstFrame, uint32_t * candidates) {
 	int x, y;
-	listelement * best;
-	
-	framecnt = (framecnt + 1)%8;
-
-	cleargridlayer(framecnt);
-
-	putcandidatestogrid(candidates, framecnt);
-
-	connectallatcurrentlayer(framecnt);
-
-	listelement * current;
-	listelement * innercurrent;
+	list<Path>::iterator itp;
+	list<Path> * lp;
+	list<Candidate>::iterator itc;
+	list<Candidate> * lc;
 	int i;
 
-	for(x = 0; x < iBgWidth; x++) {
-		for(y = 0; y < iBgHeight; y++) {
-			if(path.at<Vec3b>(y, x)[2] > 0)
-				path.at<Vec3b>(y, x)[2]-=40;
-			else
-				path.at<Vec3b>(y, x)[2]=0;
-		}
+	clearcandidategrid(); //Clear all cells of the candidate grid
+	putcandidatestogrid(candidates); //Insert all new candidates to the according grid cells
+	insertclosestcandidateinallpaths(2, 16); //Try to connect the paths to the new candidates
+	createnewpathsfromremainingcandidates(); //Create new paths from unconnected candidates if there were not marked otherwise
+	removeorrelocatepaths(); //Remove paths with no new candidates and paths out of range
+	removepathswithsamestart(); //If to many paths start at the same point remove them
+
+	//Copy the backround to the output image depending on what has been selected
+	if(background == 0) {
+		dstFrame = path.clone();
+	} else if (background == 1) {
+		dstFrame = srcFrame.clone();
+		return;
 	}
 
-	for(i = 1; i < candidates[0]; i++) {
-		x = UNPACKHI32(candidates[i]);
-		y = UNPACKLO32(candidates[i]);
-		if(x == 0 && y == 0)
-			break;
-		else
-			path.at<Vec3b>(y, x) = {0, 0, 240};
-	}
+	float maxLength = 0;
+	Point centerOfThatPoint(0,0);
 
-	dstFrame = path.clone();
-
-	for(x=0; x<53; x++) {
-		for(y=0; y<30; y++) {
-			current = grid[x][y][framecnt];
-			while(current != NULL) {
-				innercurrent = current;
-				for(i=0; i<6; i++) {
-					if((innercurrent->closestfromnextlayer) != NULL) {
-						Point start2(innercurrent->x, innercurrent->y);
-						Point end2(innercurrent->closestfromnextlayer->x, innercurrent->closestfromnextlayer->y);
-						line(dstFrame, start2, end2, Scalar(255,0,0));
-						innercurrent = innercurrent->closestfromnextlayer;
-					} else {
-						break;
+	//Go through all entries of the path-grid
+	for(x=0; x<pathgrid->xcells; x++) {
+		for(y=0; y<pathgrid->ycells; y++) {
+			lp = pathgrid->GetEntry(x, y);
+			//Go through all list elements in each entry
+			for (itp=lp->begin(); itp!=lp->end(); itp++) {
+				lc = &((*itp).path);
+				if((*itp).ball) {
+					Point start(lc->front().x, lc->front().y);
+					Point end(lc->back().x, lc->back().y);		
+				  
+					if(abs((*itp).overallMovementX)*abs((*itp).overallMovementY) > maxLength){
+					    maxLength = abs((*itp).overallMovementX)*abs((*itp).overallMovementY);
+					    centerOfThatPoint = Point(lc->front().x, lc->front().y);
+					    
 					}
+					circle(dstFrame, start, 8, Scalar(255,0,0), 1,8,0);
+				}else{
+				  Point start(lc->front().x, lc->front().y);
+				  circle(dstFrame, start, 8, Scalar(0,0,255), 1,8,0);
 				}
-
-				if((current->chainlength) > 6) {
-					/*Point cmiddle(current->x, current->y);
-					circle(dstFrame, cmiddle, IGNORERADIUS, Scalar(255,255,0), 1,8,0);
-					dstFrame.at<Vec3b>(current->chainendy, current->chainendx) = {0, 0, 255};*/
-
-					innercurrent = current;
-					for(i=0; i<6; i++) {
-						innercurrent = innercurrent->closestfromnextlayer;
-					}
-					Point start(current->x, current->y);
-					Point end(innercurrent->x, innercurrent->y);
-
-					if(diffabs(innercurrent->x, innercurrent->y, current->x, current->y) > 8) {
-						line(dstFrame, start, end, Scalar(0,255,0));
-						circle(dstFrame, start, IGNORERADIUS, Scalar(0,255,255), 1,8,0);
-					} else {
-						line(dstFrame, start, end, Scalar(255,0,255));
-					}
-				}
-				current = current->next;
 			}
+
 		}
 	}
+	//Draw a bold green circle around the point we have found
+	if(centerOfThatPoint.x != 0 && centerOfThatPoint.y != 0){
+	    circle(dstFrame, centerOfThatPoint, 16, Scalar(0,255,0), 5,8,0);
+	}
+	
+
 }
 

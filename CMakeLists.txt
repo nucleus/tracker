@@ -6,6 +6,8 @@ INCLUDE(FindCUDA)
 
 set(CUDA_NVCC_FLAGS "-arch=sm_20")
 
+INCLUDE_DIRECTORIES(/home/breakfast/NVIDIA_GPU_Computing_SDK/C/common/inc)
+
 INCLUDE_DIRECTORIES(${CUDA_SDK_ROOT_DIR}/../shared/inc)
 INCLUDE_DIRECTORIES(${CUDA_SDK_ROOT_DIR}/common/inc)
 INCLUDE_DIRECTORIES(./src)
@@ -15,7 +17,7 @@ FIND_PACKAGE(Boost)
 INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
 LINK_DIRECTORIES(${Boost_LIBRARY_DIRS})
 
-CUDA_ADD_EXECUTABLE(tracker ./src/main.cpp ./src/ForegroundSegmenter.cpp ./src/BallDetection.cpp ./src/VideoBackend.cpp ./src/ForegroundSegmenter.cu ./src/threading.cpp)
+CUDA_ADD_EXECUTABLE(tracker ./src/main.cpp ./src/ForegroundSegmenter.cpp ./src/BallDetection.cpp ./src/VideoBackend.cpp ./src/ForegroundSegmenter.cu ./src/threading.cpp ./src/Candidate.cpp ./src/GridC.cpp ./src/GridP.cpp ./src/Path.cpp)
 TARGET_LINK_LIBRARIES(tracker opencv_core)
 TARGET_LINK_LIBRARIES(tracker opencv_imgproc)
 TARGET_LINK_LIBRARIES(tracker opencv_highgui)

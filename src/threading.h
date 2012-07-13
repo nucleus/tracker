@@ -12,7 +12,12 @@
 #include <queue>
 #include <boost/thread.hpp>
 
-// Queue class that has thread synchronisation
+/*!
+ * 	Class: SynchronisedQueue.
+ * 
+ * 	A protected queue to act as an intermediate buffer in producer-consumer
+ * 	thread relationships.
+ */
 template <typename T>
 class SynchronisedQueue {
 private:
@@ -27,7 +32,7 @@ public:
 		max = _max;
 	}
 	
-	// Add data to the queue and notify others
+	/*! Add data to the queue and notify others */
 	void Enqueue(const T& data)
 	{
 		// Acquire lock on the queue
@@ -43,7 +48,7 @@ public:
 
 	} // Lock is automatically released here
 
-	// Get data from the queue. Wait for data if not available
+	/*! Get data from the queue. Wait for data if not available */
 	T Dequeue()
 	{
 
@@ -63,7 +68,11 @@ public:
 	} // Lock is automatically released here
 };
 
-// Thread to read in frames from the video stream
+/*!
+ * 	Class: ReaderThread.
+ * 
+ * 	Thread parsing the video source to hand fresh frames to the processing stages.
+ */
 class ReaderThread {
 private:
 	VideoCapture* cap;
@@ -77,7 +86,11 @@ public:
 	void operator()();
 };
 
-// Thread to process frames, could be split later into segmenter and ball detection
+/*!
+ *	Class: ProcessorThread.
+ * 
+ *	Thread to process frames, could be split later into segmenter and ball detection.
+ */
 class ProcessorThread {
 private:
 	SynchronisedQueue<Mat*>* InputQueue;

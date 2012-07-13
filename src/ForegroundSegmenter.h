@@ -36,27 +36,42 @@ void segmentAndAddToBackground(float* segmented, float* background, unsigned wid
 void preProcessImage(uchar3* src, float* tmpGray, float* tmpGauss, float* background, unsigned width, unsigned height);
 void testFastRgb2Gray(uchar3* src, float* dst, unsigned width, unsigned height);
 
-// Class containing the background model and foreground segmentation functionality
+/*!
+ * 	Class: ForegroundSegmenter.
+ * 
+ * 	Class containing background removal functionality. Supports GPU execution
+ * 	for higher performance. The general processing order is the following:
+ * 	
+ * 	1) Preprocess the image (on the CPU, this is performed as part of background
+ * 	update and segmentation), i.e. convert to grayscale and impose gaussian blur.
+ * 
+ * 	2) Add the image to the background model, i.e. use the learning rate to perform
+ * 	a weighted add with the current background model.
+ * 
+ * 	3) Perform background segmentation. In this step, the background image is subtracted
+ * 	from the preprocessed current image. The absolute value of the difference is squared
+ * 	and thresholded to produce a binary float (0.0 / 255.0) foreground image.
+ */
 class ForegroundSegmenter {
 public:
 	ForegroundSegmenter();	
 	~ForegroundSegmenter();
 	
-	/*	Function: setImageParams
-	 *	------------------------
+	/*!	Function: setImageParams.
+	 * 
 	 *	Specify the core parameters of the background model image. 
 	 */
 	void setImageParams(unsigned int _width, unsigned int _height, unsigned int _channels);
 	
-	/*	Function: uploadPreprocessFrame
-	 * 	-------------------------------
+	/*!	Function: uploadPreprocessFrame.
+	 * 
 	 * 	If the GPU is used for background removal, this function uploads the current frame to the device,
 	 * 	converts it to grayscale and performs gaussian smoothing. 
 	 */
 	void uploadPreprocessFrame(Mat& frame);
 	
-	/*	Function: addFrameToModel
-	 *	-------------------------
+	/*!	Function: addFrameToModel.
+	 * 
 	 *	Adds an incoming frame to the current background model.
 	 *	If the number of modeled frames is below the specified maximum,
 	 *	each frame is weighted with 1/MAXFRAMES for initial bg model training.
@@ -65,31 +80,32 @@ public:
 	 */
 	void addFrameToModel(Mat& frame);
 	
-	/*	Function: segment
-	 *	-----------------
+	/*!	Function: segment.
+	 * 
 	 *	Utilizes the available background model to remove the background from
 	 *	a given source frame, storing the result into the dstFrame location.
 	 */
 	void segment(Mat& srcFrame, Mat& dstFrame, vector< pair<unsigned, unsigned> >& cForegroundList);
 	
-	/*	Function: genLowLevelCandidates
-	 * 	-------------------------------
+	/*!	Function: genLowLevelCandidates.
+	 * 
 	 * 	Processes a given binary foreground mask to generate
 	 * 	early ball candidate pixels by strong blur followed by
 	 * 	non-maximum suppression. 
 	 */
 	void genLowLevelCandidates(Mat& foreground, uint32_t candidates[ALLOWED_CANDIDATES+1]);
 	
-	/*	Function: modelMean
-	 *	-------------------
+	/*!	Function: modelMean.
+	 * 
 	 *	Returns the mean image mu of the background model.
 	 */
 	Mat& modelMean() {
 		return cBgMean;
 	}
 	
-	/*	Function: useEdgeImages
-	 *	-------------------
+	/*!
+	 *	Function: useEdgeImages.
+	 * 
 	 *	Specify whether the background model will be an edge image model.
 	 */
 	void useEdgeImages(bool b = true) {
@@ -97,14 +113,14 @@ public:
 		bProcessEdgeImages = b;
 	}
 	
-	/*	Function: useGPU
-	 *	-------------------
+	/*!	Function: useGPU.
+	 * 
 	 *	Specify whether the background model will be computed on the GPU.
 	 */
 	void useGPU(bool b = true);
 	
-	/*	Function: setMaxFrames
-	 *	-------------------
+	/*!	Function: setMaxFrames.
+	 * 
 	 *	Specify the maximum number of background frames to be included in the bg model.
 	 */
 	void setMaxFrames(unsigned int max) {
@@ -112,16 +128,16 @@ public:
 		iMaxFramesModeled = max;
 	}
 	
-	/*	Function: setLearningRate
-	 *	-------------------------
+	/*!	Function: setLearningRate.
+	 * 
 	 *	Specify the weight at which (after initial training) new frames are added to the model
 	 */
 	void setLearningRate(double alpha) {
 		dLearningRate = alpha;
 	}
 	
-	/*	Function: reset
-	 *	-------------------
+	/*!	Function: reset.
+	 * 
 	 *	Deletes the current background model.
 	 */
 	void reset() {
